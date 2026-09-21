@@ -1,0 +1,16 @@
+{
+  "name": "outline-persist-marketplace",
+  "owner": {
+    "name": "Mariusz Rakus"
+  },
+  "metadata": {
+    "description": "Local marketplace hosting the outline-persist plugin."
+  },
+  "plugins": [
+    {
+      "name": "outline-persist",
+      "source": "./",
+      "description": "Durable Outline-backed work-state persistence for Claude Code sessions."
+    }
+  ]
+}

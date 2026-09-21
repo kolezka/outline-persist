@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "outline": {
+      "type": "http",
+      "url": "https://outline.raqz.link/mcp",
+      "headers": {
+        "CF-Access-Client-Id": "${CF_ACCESS_CLIENT_ID}",
+        "CF-Access-Client-Secret": "${CF_ACCESS_CLIENT_SECRET}",
+        "Authorization": "Bearer ${OUTLINE_API_TOKEN}"
+      }
+    }
+  }
+}

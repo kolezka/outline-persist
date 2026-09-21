@@ -1,0 +1,17 @@
+{
+  "name": "outline-persist",
+  "version": "0.1.0",
+  "description": "Durable work-state persistence for Claude Code sessions, backed by the Outline MCP server. Reads prior context before work and records task start, checkpoints, handoff and completion.",
+  "author": {
+    "name": "Mariusz Rakus"
+  },
+  "license": "MIT",
+  "keywords": [
+    "outline",
+    "persistence",
+    "memory",
+    "knowledge-base",
+    "session-state",
+    "handoff"
+  ]
+}
