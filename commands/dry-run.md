@@ -3,7 +3,7 @@ name: dry-run
 description: Show the intended Outline read or write without changing anything.
 ---
 
-Run the outline-persist skill in **dry-run** mode.
+Run the worklog-persist skill in **dry-run** mode.
 
 1. Resolve identity via `scripts/resolve-context.sh`.
 2. Show exactly what a real `/load`, `/start`, `/checkpoint`, `/handoff` or `/complete` would do:

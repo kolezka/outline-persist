@@ -3,7 +3,7 @@ name: start
 description: Create or update the Outline task record at the start of a work item.
 ---
 
-Run the outline-persist skill's **start** step.
+Run the worklog-persist skill's **start** step.
 
 1. Availability check; resolve identity via `scripts/resolve-context.sh` (ask once if world unresolved or slug unclear).
 2. `list_documents` in `raqz.pl/<World>/<project>/Tasks` and match the task slug — **prefer updating the existing record over creating a duplicate** (idempotency key = project + task slug).

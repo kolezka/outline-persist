@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# OPT-IN real Outline integration smoke test. Skipped unless OUTLINE_PERSIST_LIVE=1
+# OPT-IN real Outline integration smoke test. Skipped unless WORKLOG_PERSIST_LIVE=1
 # and the outline MCP env is present. Never required in CI; never needs creds by
 # default. This only checks reachability of the configured Outline endpoint; it
 # does NOT create or mutate documents.
 set -euo pipefail
 
-if [ "${OUTLINE_PERSIST_LIVE:-}" != 1 ]; then
-  echo "SKIP: set OUTLINE_PERSIST_LIVE=1 to run the live Outline reachability check"
+if [ "${WORKLOG_PERSIST_LIVE:-}" != 1 ]; then
+  echo "SKIP: set WORKLOG_PERSIST_LIVE=1 to run the live Outline reachability check"
   exit 0
 fi
 
