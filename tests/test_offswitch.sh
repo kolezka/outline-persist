@@ -9,7 +9,7 @@ check() { if [ "$2" != "$3" ]; then echo "FAIL: $1 (want '$3', got '$2')"; fails
 
 export XDG_STATE_HOME="$(mktemp -d)"
 trap 'rm -rf "$XDG_STATE_HOME"' EXIT
-unset OUTLINE_HOOK_OFF || true
+unset WORKLOG_HOOK_OFF || true
 
 check "default on" "$(bash "$ROOT/scripts/persistence-state.sh" status)" "on"
 
@@ -26,7 +26,7 @@ bash "$ROOT/scripts/persistence-state.sh" on >/dev/null
 check "toggled back on" "$(bash "$ROOT/scripts/persistence-state.sh" status)" "on"
 
 # Env override forces off even without the marker file.
-check "env override status" "$(OUTLINE_HOOK_OFF=1 bash "$ROOT/scripts/persistence-state.sh" status)" "off"
-check "env override silences hook" "$(OUTLINE_HOOK_OFF=1 bash "$ROOT/scripts/session-start.sh" | wc -c | tr -d ' ')" "0"
+check "env override status" "$(WORKLOG_HOOK_OFF=1 bash "$ROOT/scripts/persistence-state.sh" status)" "off"
+check "env override silences hook" "$(WORKLOG_HOOK_OFF=1 bash "$ROOT/scripts/session-start.sh" | wc -c | tr -d ' ')" "0"
 
 [ "$fails" = 0 ] && echo "PASS test_offswitch" || { echo "$fails failure(s)"; exit 1; }

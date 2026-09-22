@@ -3,7 +3,7 @@ name: handoff
 description: Write a compact handoff state when the session ends, is blocked, or is transferred.
 ---
 
-Run the outline-persist skill's **handoff** step.
+Run the worklog-persist skill's **handoff** step.
 
 1. Availability check; resolve identity; locate the existing `Tasks/<slug>` record (update it, do not duplicate).
 2. Write a compact handoff block: current status (`handoff` or `blocked`), what is done, what remains, the exact next action, and open questions.

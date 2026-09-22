@@ -1,4 +1,4 @@
-# outline-persist
+# worklog-persist
 
 A focused Claude Code plugin that gives your sessions a **durable work-state
 layer** backed by the Outline MCP server. It preserves the state of active
@@ -8,6 +8,12 @@ next action is.
 
 It is a persistence layer only. Graph synchronization, reflection promotion and
 curriculum clustering are deliberately **not** part of this plugin.
+
+The plugin is named `worklog-persist`, not `outline-persist`: the `outline` name
+belongs to the Outline MCP server (`mcp__outline__*`) and the separate `outline`
+KB skill, and a plugin with the same name shadows them. Only the plugin identity
+changed. The MCP server entry, `OUTLINE_API_TOKEN` and the Outline document
+routing are untouched.
 
 ## What it does
 
@@ -36,6 +42,21 @@ if they are already present, and never edits your `settings.json` or a shared
 `mcp.json` — the `claude` CLI manages its own registry, so unrelated marketplaces,
 plugins, MCP servers and hooks are left untouched.
 
+## Renamed from `outline-persist`
+
+| Old | New |
+|-----|-----|
+| plugin and skill `outline-persist` | `worklog-persist` |
+| marketplace `outline-persist-marketplace` | `worklog-persist-marketplace` |
+| env `OUTLINE_HOOK_OFF` | `WORKLOG_HOOK_OFF` |
+| env `OUTLINE_PERSIST_LIVE` | `WORKLOG_PERSIST_LIVE` |
+| state dir `~/.local/state/outline-persist` | `~/.local/state/worklog-persist` |
+
+Uninstall the old plugin before installing this one:
+`claude plugin uninstall outline-persist@<marketplace>`. The off-state file does not
+migrate. If automatic persistence was disabled, run
+`bash scripts/persistence-state.sh off` once after the reinstall.
+
 ## Enable / disable
 
 The plugin can be disabled without uninstalling it:
@@ -44,7 +65,7 @@ The plugin can be disabled without uninstalling it:
 /off                                         # inside a session (slash command)
 bash scripts/persistence-state.sh off        # or from a shell
 bash scripts/persistence-state.sh on         # re-enable
-OUTLINE_HOOK_OFF=1                            # env override forces off
+WORKLOG_HOOK_OFF=1                            # env override forces off
 
 ./install.sh --disable                        # disable the whole plugin
 ./install.sh --enable
@@ -68,7 +89,7 @@ Seven slash commands map to the persistence lifecycle:
 | `/dry-run`    | Show the intended read/write (with redaction visible), change nothing. |
 | `/off`        | Disable automatic persistence without removing the plugin. |
 
-The full operational contract lives in `skills/outline-persist/SKILL.md`, which
+The full operational contract lives in `skills/worklog-persist/SKILL.md`, which
 also auto-activates by description — the robust driver even where the SessionStart
 hook's context injection is affected by known Claude Code bugs
 ([#16538](https://github.com/anthropics/claude-code/issues/16538),
@@ -90,7 +111,7 @@ an `UNRESOLVED` sentinel that prompts the operator.
 
 ```bash
 bash tests/run.sh                 # full offline suite (redaction, identity, off-switch, structure)
-OUTLINE_PERSIST_LIVE=1 bash tests/test_live_outline.sh   # opt-in reachability check
+WORKLOG_PERSIST_LIVE=1 bash tests/test_live_outline.sh   # opt-in reachability check
 ```
 
 Offline tests use local fixtures and mocks; the live test is opt-in and needs no

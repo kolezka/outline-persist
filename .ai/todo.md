@@ -1,7 +1,7 @@
-# outline-persist — build plan
+# worklog-persist — build plan
 
 Extract the Outline durable work-state persistence contract from `dotfiles-next`
-and package it as a standalone Claude Code plugin `outline-persist`.
+and package it as a standalone Claude Code plugin `worklog-persist`.
 
 Scope decision (user): **Option 1** — standalone plugin only. Do NOT modify the
 live `dotfiles-next` repo (no install.sh edits, no golden-master regen). The
@@ -20,7 +20,7 @@ dotfiles migration is a separate reviewed follow-up.
 - **Depends on (external, not vendored):** `kb list` / `~/.config/kb/worlds.yaml` for world
   resolution. Plugin degrades gracefully when absent; never hardcodes a world name.
 - **Unchanged behavior preserved:** SessionStart rule text + dedupe marker `"Outline (MCP server"`,
-  `OUTLINE_HOOK_OFF` gate, world resolution via `kb list`, no-secrets rule.
+  `WORKLOG_HOOK_OFF` gate, world resolution via `kb list`, no-secrets rule.
 
 ## Key doc facts (verified 2026-09-21)
 
@@ -41,11 +41,11 @@ dotfiles migration is a separate reviewed follow-up.
 - [x] Migration map + format decision + doc verification
 - [ ] plugin.json + marketplace.json
 - [ ] .mcp.json (reuse outline transport, env placeholders, no creds)
-- [ ] hooks/hooks.json + scripts/session-start.sh (OUTLINE_HOOK_OFF + off-file gate)
+- [ ] hooks/hooks.json + scripts/session-start.sh (WORKLOG_HOOK_OFF + off-file gate)
 - [ ] scripts/resolve-context.sh (world-agnostic; git-derived project/branch/worktree)
 - [ ] scripts/redact.py (secret redaction, fixture-tested)
 - [ ] scripts/persistence-state.sh (off/on toggle)
-- [ ] skills/outline-persist/SKILL.md (persistence protocol + record schema + idempotency)
+- [ ] skills/worklog-persist/SKILL.md (persistence protocol + record schema + idempotency)
 - [ ] commands/{load,start,checkpoint,handoff,complete,dry-run,off}.md
 - [ ] install.sh (idempotent local marketplace install + enable/disable helpers)
 - [ ] tests/ (discovery, idempotent install, availability, world resolution, identity,
@@ -61,7 +61,7 @@ All build tasks done. Test outcomes:
   keys ending `_TOKEN`; fixed, then GREEN).
 - `tests/test_context.sh` — PASS (identity + world-agnostic: KB_WORLD honored, UNRESOLVED
   sentinel, remote basename, slug validation).
-- `tests/test_offswitch.sh` — PASS (off/on toggle + hook gating + OUTLINE_HOOK_OFF).
+- `tests/test_offswitch.sh` — PASS (off/on toggle + hook gating + WORKLOG_HOOK_OFF).
 - `tests/test_structure.sh` — PASS (discovery, idempotent --check, single outline MCP,
   env-only creds, wrapped hooks + marker, 7 commands).
 - `install.sh --check` PASS; `--dry-run` emits correct idempotent commands (claude CLI present).

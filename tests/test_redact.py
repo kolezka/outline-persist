@@ -82,8 +82,8 @@ def test_jwt():
 def test_preserves_ordinary_text():
     body = (
         "Objective: migrate outline persistence.\n"
-        "Status: active. Branch: feat/outline-persist.\n"
-        "Changed files: scripts/redact.py, skills/outline-persist/SKILL.md.\n"
+        "Status: active. Branch: feat/worklog-persist.\n"
+        "Changed files: scripts/redact.py, skills/worklog-persist/SKILL.md.\n"
         "Next action: run tests."
     )
     out = _clean(body)

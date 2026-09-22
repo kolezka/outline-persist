@@ -1,10 +1,10 @@
 ---
-name: outline-persist
+name: worklog-persist
 description: Use whenever you start, checkpoint, hand off, or finish non-trivial work, or need prior context on a task/feature/bug/decision. Durable work-state persistence backed by the Outline MCP server — read current state before acting, record task start, checkpoint at verified milestones, write handoff and completion.
 version: 0.1.0
 ---
 
-# Outline work-state persistence
+# worklog-persist: durable work-state persistence
 
 Outline is durable; conversation context is volatile. The state of active
 engineering work lives in Outline so it survives across sessions: what task is in

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Install / enable / disable the outline-persist plugin locally.
+# Install / enable / disable the worklog-persist plugin locally.
 #
-# outline-persist ships as a self-contained Claude Code plugin with its own local
+# worklog-persist ships as a self-contained Claude Code plugin with its own local
 # marketplace (.claude-plugin/marketplace.json). Installation registers that
 # marketplace and installs the plugin through the `claude` CLI, which manages its
 # own registry — so unrelated marketplaces, plugins, MCP servers and hooks are
@@ -16,8 +16,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN="outline-persist"
-MARKET="outline-persist-marketplace"
+PLUGIN="worklog-persist"
+MARKET="worklog-persist-marketplace"
 DRY=0
 
 log()  { printf '%s\n' "$*"; }
@@ -41,14 +41,14 @@ def load(p):
         return None
 
 man = load(".claude-plugin/plugin.json")
-if man is not None and man.get("name") != "outline-persist":
-    errs.append("plugin.json name must be 'outline-persist'")
+if man is not None and man.get("name") != "worklog-persist":
+    errs.append("plugin.json name must be 'worklog-persist'")
 
 mkt = load(".claude-plugin/marketplace.json")
 if mkt is not None:
     names = [p.get("name") for p in mkt.get("plugins", [])]
-    if "outline-persist" not in names:
-        errs.append("marketplace.json must list plugin 'outline-persist'")
+    if "worklog-persist" not in names:
+        errs.append("marketplace.json must list plugin 'worklog-persist'")
 
 hooks = load("hooks/hooks.json")
 if hooks is not None:
@@ -68,8 +68,8 @@ missing = need_cmds - have
 if missing:
     errs.append(f"missing commands: {sorted(missing)}")
 
-if not (root / "skills/outline-persist/SKILL.md").is_file():
-    errs.append("missing skills/outline-persist/SKILL.md")
+if not (root / "skills/worklog-persist/SKILL.md").is_file():
+    errs.append("missing skills/worklog-persist/SKILL.md")
 
 for s in ("session-start.sh", "resolve-context.sh", "persistence-state.sh", "redact.py"):
     if not (root / "scripts" / s).is_file():
@@ -80,7 +80,7 @@ if errs:
     for e in errs:
         print("  -", e)
     sys.exit(1)
-print("structure OK: outline-persist plugin is well-formed")
+print("structure OK: worklog-persist plugin is well-formed")
 PY
 }
 

@@ -3,7 +3,7 @@ name: load
 description: Load current work-state from Outline before starting substantive work.
 ---
 
-Run the outline-persist skill's **load** step.
+Run the worklog-persist skill's **load** step.
 
 1. Confirm the `outline` MCP server is available (`list_collections`). If not, say persistence is unavailable and stop.
 2. Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-context.sh` to get repo, project, world, branch, worktree. If `world` is `UNRESOLVED`, resolve via `kb list` or ask once.

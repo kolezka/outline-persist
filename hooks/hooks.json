@@ -1,5 +1,5 @@
 {
-  "description": "Injects the Outline durable-memory rule at session start. Gated by OUTLINE_HOOK_OFF and the persisted off-state file. Skips silently when disabled.",
+  "description": "Injects the Outline durable-memory rule at session start. Gated by WORKLOG_HOOK_OFF and the persisted off-state file. Skips silently when disabled.",
   "hooks": {
     "SessionStart": [
       {

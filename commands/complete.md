@@ -3,7 +3,7 @@ name: complete
 description: Record the real completion result of a work item in Outline.
 ---
 
-Run the outline-persist skill's **complete** step.
+Run the worklog-persist skill's **complete** step.
 
 1. Availability check; resolve identity; locate the existing `Tasks/<slug>` record.
 2. Record the actual outcome: the verification commands run and their decoded outcomes, links to the merged commit/PR/pipeline. Set status `complete`, refresh `Last updated:`.
