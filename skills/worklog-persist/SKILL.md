@@ -1,7 +1,7 @@
 ---
 name: worklog-persist
 description: Use whenever you start, checkpoint, hand off, or finish non-trivial work, or need prior context on a task/feature/bug/decision. Durable work-state persistence backed by the Outline MCP server — read current state before acting, record task start, checkpoint at verified milestones, write handoff and completion.
-version: 0.1.0
+version: 0.2.0
 ---
 
 # worklog-persist: durable work-state persistence
@@ -44,29 +44,75 @@ or raw MCP payloads.
 
 ## Identity and world resolution
 
-Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-context.sh [task-slug]`. It returns
-JSON: `repo`, `project`, `world`, `branch`, `worktree`, `task_slug`.
+Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-context.sh [task-slug]`. It prints
+JSON. Use its paths as given; never rebuild them by hand.
 
-- **Project** = basename of `git remote get-url origin` (sans `.git`), else the
-  repo directory name.
-- **World** is never hardcoded. It comes from `$KB_WORLD`, else the manifest via
-  `kb list` (`~/.config/kb/worlds.yaml`, `KB_MANIFEST` override). If the script
-  reports `world: UNRESOLVED` and `kb` cannot resolve it, ask the operator once,
-  then proceed. A base world and an overlay world declare different world sets, so
-  a list written into this file would be wrong for somebody the day it is written.
-- **Task slug** is stable kebab-case, shared across Specs/Plans/Tasks.
+| Field | Meaning |
+|---|---|
+| `world`, `project` | From the kb manifest when the repo is declared there |
+| `world_source` | `manifest`, `env` (`$KB_WORLD`) or `fallback` |
+| `kb_path` | Project folder in Outline (`kb_folder` override, else `<root>/<World>/<project>`) |
+| `tasks_path`, `record_path` | `<kb_path>/Tasks` and `<kb_path>/Tasks/<slug>` |
+| `root_collection`, `global_collection`, `archive_collection` | From the manifest `outline:` block |
+| `repo_root`, `worktree`, `branch` | `repo_root` is the main checkout, also from a linked worktree |
+| `ignored` | The manifest lists this repo under `ignore:` |
+| `mirror_dir` | Local read-only mirror of the project folder, if present |
+| `manifest`, `manifest_error` | Which manifest was read, or why none was |
+
+The manifest is the one the `kb` CLI reads: `$KB_MANIFEST`, else
+`~/.config/kb/worlds.yaml`. A world overlay sets `KB_MANIFEST` to its own file, so
+the same repo can resolve differently per context. That is intended.
+
+- **World** is never hardcoded. Precedence: manifest match, then `$KB_WORLD`, then
+  `UNRESOLVED`. On `UNRESOLVED`, ask the operator once (offer `candidate_worlds`),
+  then proceed. Do not write anything until the world is known.
+- **Project** is the manifest `name` when declared (it can differ from the repo
+  name), else the basename of `git remote get-url origin`, else the main checkout
+  directory name. A worktree directory name is never the project.
+- **Ignored repo**: the operator decided it has no Outline folder. Do not bootstrap
+  one. Ask before writing anything for it.
+- **Task slug**: lowercase kebab-case, shared across `Specs`/`Plans`/`Tasks`.
+  Ticket-backed work prefixes the ticket ID: `AD-163-uat-checklist`.
 
 ## Structure and routing
 
-Active KB collection `raqz.pl`: worlds are top-level folders, a project is
-`raqz.pl/<World>/<project>`. Inside a project: `INDEX.md` plus `Specs`, `Plans`,
-`Tasks` parents. Work records for a task live at `Tasks/<task-slug>` (ticket-backed:
-`Tasks/<TICKET-ID>-<slug>`). Cross-project agent behaviour, conventions and lessons
-go to the existing `Claude's Notebook` collection — never recreate it, never create
-a second global KB. Do not write to `Archive` unless existing routing requires it.
+This matches the `outline` skill and the `kb` tooling in dotfiles-next. Names in
+angle brackets come from the resolver.
 
-Prefer updating an existing project document over creating a duplicate. Document
-bodies must not begin with an H1 (the title is a separate field).
+```
+<root_collection>/                 active KB (usually raqz.pl)
+  <World>/                         INDEX only
+    <project>/                     = kb_path
+      INDEX                        project hub
+      Specs/  Plans/  Tasks/       parents with child lists
+      Tasks/<slug>                 = record_path, one per work item
+      Tasks/BACKLOG                trivial items, until they grow up
+      Packages/<pkg>/              monorepo sub-packages only
+    status-reports/  analizy/      per-world, not project work
+<global_collection>                Claude's Notebook: SOUL, CONVENTIONS, LESSONS, STACK-NOTES
+<archive_collection>               retired content, Archive/Security
+```
+
+- Work records go to `record_path`. Prefer updating an existing doc over a new one.
+- Cross-project lessons and conventions go to `global_collection`. Never recreate it
+  and never create a second global KB.
+- Never delete. To retire a doc, move it to `archive_collection`.
+- Outline addresses are chains of **titles**. Renaming a folder or doc breaks every
+  `[[link]]` to it. Rename only on request, and across Specs/Plans/Tasks together.
+- Document bodies must not begin with an H1. The title is a separate field.
+
+## Bootstrap (lazy, idempotent)
+
+Run before the first write in a session, never before a read-only load.
+
+1. Resolve identity. Stop on `UNRESOLVED` world or `ignored` repo (see above).
+2. Resolve each segment of `kb_path` with `list_documents`. Create only what is
+   missing, and check each child before you create it. This repairs a partial
+   folder and never duplicates.
+3. Seeding shape depends on depth, as in `kb reconcile`: a **world** folder gets
+   `INDEX` only; a **project** folder gets `INDEX`, `Specs`, `Plans`, `Tasks`. Never
+   seed `Specs`/`Plans`/`Tasks` at world level.
+4. A folder that has no `INDEX` is a hub gap. Report it, do not skip it silently.
 
 ## The persisted work record
 
@@ -84,18 +130,32 @@ present an unverified claim as verified.
 
 ## Idempotency
 
-The record identity is a stable key = resolved `project` + `task_slug`, realised as
-the document `Tasks/<task-slug>` in `raqz.pl/<World>/<project>`. Before creating,
-`list_documents` scoped to that `Tasks` folder and match the slug; if it exists,
-`update_document` it. Repeating a checkpoint updates the same record — it must never
-duplicate. Never use a timestamp alone as document identity.
+The record identity is `project` + `task_slug`, realised as the doc at
+`record_path`. Before creating, `list_documents` under `tasks_path` and match the
+title to the slug. If it exists, `update_document` it. A repeated checkpoint updates
+the same record and never duplicates. Never use a timestamp as document identity.
+
+## Status and the `Tasks` parent
+
+The record status and the flag in the `Tasks` parent child-list differ. Map them:
+
+| Record status | `Tasks` flag |
+|---|---|
+| `active` | `doing` |
+| `blocked` | `blocked` |
+| `handoff` | `doing` |
+| `complete` | `done` |
+
+A new record always goes into the `Tasks` child-list with its flag, and each status
+change updates that flag. If the parent is missing, report the record as orphaned.
 
 ## Lifecycle (maps to the commands)
 
-- **load** — resolve identity; find the existing `Tasks/<slug>` record; read it plus
-  the project `INDEX.md` and related docs before substantive work; return a concise
-  current-state summary.
-- **start** — create or update `Tasks/<slug>` with objective, acceptance criteria,
+- **load** — resolve identity; find the record at `record_path`; read it plus the
+  project `INDEX` and linked docs before substantive work; return a concise
+  current-state summary. If Outline is unavailable and `mirror_dir` is set, read the
+  mirror instead (see below) and say it can be stale.
+- **start** — bootstrap if needed; create or update `record_path` with objective, acceptance criteria,
   repo, worktree, branch; link related Specs/Plans/existing docs. Update the `Tasks`
   parent child-list.
 - **checkpoint** — after a meaningful *verified* milestone, `update_document` the same
@@ -111,6 +171,15 @@ duplicate. Never use a timestamp alone as document identity.
   fields, the redacted body) without calling any write tool.
 - **off** — `bash ${CLAUDE_PLUGIN_ROOT}/scripts/persistence-state.sh off` disables the
   automatic SessionStart rule without removing the plugin; `... on` re-enables.
+
+## Offline mirror (read-only)
+
+`mirror_dir` is the dotfiles-next sync of the Outline tree
+(`$OUTLINE_ROOT/outline-sync/<World>/<project>`, no root-collection segment). Files
+are named `<slug>-<id8>.md`, and the frontmatter `title:` is the Outline title. To
+find a record, match `title:` to the slug, not the file name. The mirror is a
+snapshot: never write to it, and never report it as the current state without
+saying so.
 
 ## When to write vs. not
 
