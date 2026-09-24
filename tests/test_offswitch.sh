@@ -7,7 +7,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fails=0
 check() { if [ "$2" != "$3" ]; then echo "FAIL: $1 (want '$3', got '$2')"; fails=$((fails+1)); else echo "ok: $1"; fi; }
 
-export XDG_STATE_HOME="$(mktemp -d)"
+XDG_STATE_HOME="$(mktemp -d)"
+export XDG_STATE_HOME
 trap 'rm -rf "$XDG_STATE_HOME"' EXIT
 unset WORKLOG_HOOK_OFF || true
 
