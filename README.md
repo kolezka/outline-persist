@@ -10,7 +10,7 @@ It is a persistence layer only. Graph synchronization, reflection promotion and
 curriculum clustering are deliberately **not** part of this plugin.
 
 The plugin is named `worklog-persist`, not `outline-persist`: the `outline` name
-belongs to the Outline MCP server (`mcp__outline__*`) and the separate `outline`
+belongs to the Outline MCP server and the separate `outline`
 KB skill, and a plugin with the same name shadows them. Only the plugin identity
 changed. The MCP server entry, `OUTLINE_API_TOKEN` and the Outline document
 routing are untouched.

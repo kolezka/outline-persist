@@ -37,4 +37,11 @@ for c in load start checkpoint handoff complete dry-run off; do
 done
 note "ok: all 7 verb commands present"
 
+# 6. The skill names both MCP tool prefixes and pins neither one. A plugin-only
+# install exposes mcp__plugin_worklog-persist_outline__*, never mcp__outline__*.
+skill="${SKILL_FILE:-$ROOT/skills/worklog-persist/SKILL.md}"
+grep -q 'mcp__plugin_worklog-persist_outline__' "$skill" || fail "skill omits the plugin-scoped tool prefix"
+if grep -q 'select:mcp__outline__' "$skill"; then fail "skill hardcodes the user-scope tool prefix"; fi
+note "ok: skill handles both MCP tool prefixes"
+
 [ "$fails" = 0 ] && echo "PASS test_structure" || { echo "$fails failure(s)"; exit 1; }
