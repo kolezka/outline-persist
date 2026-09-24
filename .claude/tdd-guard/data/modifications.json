@@ -1,0 +1,12 @@
+{
+  "session_id": "3e2d5d22-66f7-4743-aaf9-037f12654c9f",
+  "transcript_path": "/home/me/.claude/projects/-home-me-Development-outline-persist-claude/3e2d5d22-66f7-4743-aaf9-037f12654c9f.jsonl",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/home/me/Development/outline-persist-claude/tests/test_context.sh",
+    "old_string": "\n# Invariant: the resolver hardcodes no world name.",
+    "new_string": "\n# Without PyYAML the manifest is reported unreadable and KB_WORLD still works.\nmkdir -p \"$tmp/noyaml\" && echo 'raise ImportError(\"stub\")' > \"$tmp/noyaml/yaml.py\"\ncheck \"no PyYAML\" \"$(cd \"$tmp/myproj\" && PYTHONPATH=\"$tmp/noyaml\" KB_WORLD=E bash \"$SCRIPT\" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[\"world\"],d[\"manifest_error\"][:6])')\" \"E PyYAML\"\n\n# Invariant: the resolver hardcodes no world name.",
+    "replace_all": false
+  }
+}
