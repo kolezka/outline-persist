@@ -104,7 +104,8 @@ if missing:
 if not (root / "skills/worklog-persist/SKILL.md").is_file():
     errs.append("missing skills/worklog-persist/SKILL.md")
 
-for s in ("session-start.sh", "resolve-context.sh", "persistence-state.sh", "redact.py"):
+for s in ("session-start.sh", "resolve-context.sh", "resolve_context.py",
+          "persistence-state.sh", "redact.py"):
     if not (root / "scripts" / s).is_file():
         errs.append(f"missing scripts/{s}")
 

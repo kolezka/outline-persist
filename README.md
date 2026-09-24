@@ -111,9 +111,35 @@ and world; branch and worktree; task slug; objective; acceptance criteria; statu
 inferred/unverified items; decisions; changed files; test and verification
 results; blockers; next action; related documents; `Last updated: YYYY-MM-DD`.
 
-Records live at `raqz.pl/<World>/<project>/Tasks/<task-slug>`. The world is never
-hardcoded — it comes from `$KB_WORLD` or the `kb list` manifest, falling back to
-an `UNRESOLVED` sentinel that prompts the operator.
+## KB structure and routing
+
+The plugin follows the Outline KB layout that the `kb` tooling and the `outline`
+skill in dotfiles-next use. It reads the same manifest: `$KB_MANIFEST`, else
+`~/.config/kb/worlds.yaml`.
+
+- Collections (`root_collection`, `global_collection`, `archive_collection`) come
+  from the manifest `outline:` block.
+- A repo declared under `worlds[].projects[]` gets its world, project name and
+  optional `kb_folder` from the manifest. A linked git worktree resolves to its
+  main checkout first, so it maps to the same project.
+- An undeclared repo uses `$KB_WORLD`, else the world stays `UNRESOLVED` and the
+  agent asks once. A repo under `ignore:` gets no world and no folder by default.
+- Records live at `<kb_path>/Tasks/<task-slug>`, where `kb_path` is `kb_folder` or
+  `<root_collection>/<World>/<project>`. Ticket slugs (`AD-163-uat-checklist`)
+  are accepted.
+- Bootstrap follows `kb reconcile`: a world folder gets `INDEX` only, a project
+  folder gets `INDEX`, `Specs`, `Plans`, `Tasks`. It is idempotent.
+- `/load` can read the local mirror (`$OUTLINE_ROOT/outline-sync/<World>/<project>`)
+  when the MCP server is down. The result is labelled as a possibly stale snapshot.
+
+Check what a repo resolves to:
+
+```bash
+bash scripts/resolve-context.sh my-task-slug
+```
+
+Reading the manifest needs PyYAML. Without it the resolver reports
+`manifest_error` and falls back to `$KB_WORLD`.
 
 ## Tests
 

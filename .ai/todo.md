@@ -1,8 +1,14 @@
-# worklog-persist — build plan
+# Task: manifest-aware routing for worklog-persist (align with dotfiles-next outline KB)
 
-Extract the Outline durable work-state persistence contract from `dotfiles-next`
-and package it as a standalone Claude Code plugin `worklog-persist`.
+- [x] scripts/resolve_context.py: manifest-aware identity (world/project/kb_folder/ignore, collections, worktree canonicalisation, ticket slugs, mirror dir)
+- [x] scripts/resolve-context.sh: thin wrapper
+- [x] session-start.sh: inject resolved kb_path
+- [x] SKILL.md + commands: use resolved paths, bootstrap seeding shape, status->parent flag map, mirror fallback for load
+- [x] tests: manifest cases, worktree, ticket slug
+- [x] README, install.sh --check, version bump
+- [x] run tests; independent review
 
+<<<<<<< HEAD
 Scope decision (user): **Option 1** — standalone plugin only. Do NOT modify the
 live `dotfiles-next` repo (no install.sh edits, no golden-master regen). The
 dotfiles migration is a separate reviewed follow-up.
@@ -93,3 +99,10 @@ Verified: `make check` green (18 pytest, 5 shell suites, install.sh --check); `m
 Red runs seen for test_install.sh cases and the skill prefix test.
 Not done: live install (`make install`) and live Outline test; the outline MCP returned HTTP 401 this session.
 Observed machine state: old `outline-persist@kolezka` plugin is still installed and enabled.
+=======
+## Review
+- Suite green: `PATH=/usr/bin:$PATH bash tests/run.sh` (python3 is shimmed by a plugin in Claude sessions).
+- Red run on master: test_context aborts with exit 2 on ticket slug; hook kb_path check fails.
+- Independent review found 5 issues (ignored+KB_WORLD, nested ignore, --separate-git-dir, malformed manifest crash, misleading hook cause). All fixed test-first.
+- Not committed. `.claude/tdd-guard/data/modifications.json` is scratch, do not stage.
+>>>>>>> origin/master
