@@ -27,7 +27,7 @@ Rules for an agent editing `worklog-persist`. The plugin itself is described in
 
 ## Docs
 
-- Follow [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md): cite by `path::symbol`, never
+- Follow [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md): cite by `<path>::<symbol>`, never
   by line number; tag each claim with an evidence level; give each contract an
   `enforcement:` field.
 - When code changes, update the owning block in the same commit and re-pin
