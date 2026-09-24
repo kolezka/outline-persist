@@ -77,3 +77,19 @@ registry without user go-ahead); plugin SessionStart additionalContext delivery 
 bugs — SKILL is the fallback).
 **Blocked/out of scope (opt 1):** dotfiles-next install.sh edits + codex/opencode golden-master
 regen; deferred to a separate reviewed step.
+
+## 2026-09-24: align with dotfiles-next structure
+
+- [x] install.sh: dry-run default, --apply, --yes, worktree refusal, exact plugin@marketplace match (69d73de)
+- [x] Makefile, pyproject.toml + uv.lock, AGENTS.md, .claude/CLAUDE.md; tests/run.sh removed (69d73de)
+- [x] tests/test_install.sh: 7 cases, red on old installer, green on new (69d73de)
+- [x] Skill finds Outline tools under either MCP prefix; regression test in test_structure.sh (8b3075f)
+- [x] docs/ block tree: packaging, session-hook, persistence-protocol, verification (6e559c3)
+- [x] tests/test_docs_layout.py: 6 checks with positive controls; docs pinned to 6e559c3 (4f96430)
+
+### Review
+
+Verified: `make check` green (18 pytest, 5 shell suites, install.sh --check); `make lint` clean.
+Red runs seen for test_install.sh cases and the skill prefix test.
+Not done: live install (`make install`) and live Outline test; the outline MCP returned HTTP 401 this session.
+Observed machine state: old `outline-persist@kolezka` plugin is still installed and enabled.
