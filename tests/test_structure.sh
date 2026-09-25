@@ -31,13 +31,20 @@ python3 -c "import json;h=json.load(open('$ROOT/hooks/hooks.json'));assert h['ho
 grep -q 'Outline (MCP server' "$ROOT/scripts/session-start.sh" || fail "session-start.sh missing dedupe marker"
 note "ok: hooks wrapped + marker present"
 
-# 5. All 7 verbs exist as commands.
+# 5. hooks.json also wraps Stop, wired to stop-guard.sh, which exists on disk.
+python3 -c "import json;h=json.load(open('$ROOT/hooks/hooks.json'));assert h['hooks']['Stop']" \
+  || fail "hooks.json missing wrapped Stop"
+[ -f "$ROOT/scripts/stop-guard.sh" ] || fail "missing scripts/stop-guard.sh"
+[ -f "$ROOT/scripts/stop_guard.py" ] || fail "missing scripts/stop_guard.py"
+note "ok: Stop hook wired to stop-guard.sh"
+
+# 6. All 7 verbs exist as commands.
 for c in load start checkpoint handoff complete dry-run off; do
   [ -f "$ROOT/commands/$c.md" ] || fail "missing command: $c"
 done
 note "ok: all 7 verb commands present"
 
-# 6. The skill names both MCP tool prefixes and pins neither one. A plugin-only
+# 7. The skill names both MCP tool prefixes and pins neither one. A plugin-only
 # install exposes mcp__plugin_worklog-persist_outline__*, never mcp__outline__*.
 skill="${SKILL_FILE:-$ROOT/skills/worklog-persist/SKILL.md}"
 grep -q 'mcp__plugin_worklog-persist_outline__' "$skill" || fail "skill omits the plugin-scoped tool prefix"

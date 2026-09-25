@@ -102,13 +102,102 @@ mkdir -p "$tmp/okb/outline-sync/Alpha/declared-name"
 after="$(cd "$tmp/myproj" && bash "$SCRIPT" | field mirror_dir)"
 check "mirror dir" "$before $after" "None $tmp/okb/outline-sync/Alpha/declared-name"
 
-# A manifest with the wrong shape is reported, never a crash.
-printf 'outline: [x]\nworlds: [a, b]\nignore: 3\n' > "$tmp/bad.yaml"
-check "malformed manifest" "$(cd "$tmp/myproj" && KB_MANIFEST="$tmp/bad.yaml" bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["manifest"],bool(d["manifest_error"]))')" "UNRESOLVED None True"
+# A manifest with the wrong shape is reported, never a crash. Own directory: a
+# sibling worlds.yaml next to it would (correctly, per tier 2) resolve the world
+# from there instead, which is a different case, tested separately above.
+mkdir -p "$tmp/badmanifest"
+printf 'outline: [x]\nworlds: [a, b]\nignore: 3\n' > "$tmp/badmanifest/bad.yaml"
+check "malformed manifest" "$(cd "$tmp/myproj" && KB_MANIFEST="$tmp/badmanifest/bad.yaml" bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["manifest"],bool(d["manifest_error"]))')" "UNRESOLVED None True"
 
 # Without PyYAML the manifest is reported unreadable and KB_WORLD still works.
 mkdir -p "$tmp/noyaml" && echo 'raise ImportError("stub")' > "$tmp/noyaml/yaml.py"
 check "no PyYAML" "$(cd "$tmp/myproj" && PYTHONPATH="$tmp/noyaml" KB_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["manifest_error"][:6])')" "E PyYAML"
+
+# --- Cross-manifest / path-root resolution (round 3) ---
+# Own directory, so the sibling-manifest glob does not also pick up worlds.yaml /
+# single-world.yaml / bad.yaml from the cases above.
+cm="$tmp/cm"
+mkdir -p "$cm/manifests" "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project"
+for d in "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project"; do
+  git -C "$d" init -q && git -C "$d" commit -q --allow-empty -m init
+done
+cm="$(cd "$cm" && pwd -P)"
+
+# World A's declared repos live under $cm/a (deep, narrow root); World B's live
+# directly under $cm (shallow, broad root) -- the real Inkitt-vs-Kolezka shape.
+cat > "$cm/manifests/worlds-a.yaml" <<EOF
+worlds:
+  - name: WorldA
+    projects:
+      - {name: x1, repo: $cm/a/x1}
+      - {name: x2, repo: $cm/a/x2}
+ignore:
+  - $cm/a/ignored-sub
+EOF
+cat > "$cm/manifests/worlds-b.yaml" <<EOF
+worlds:
+  - name: WorldB
+    projects:
+      - {name: b1, repo: $cm/b1}
+      - {name: b2, repo: $cm/b2}
+  - name: WorldC
+    projects:
+      - {name: exact-project, repo: $cm/exact-project}
+EOF
+# A malformed sibling must not break resolution for the others: it sits in this
+# same directory for every case below.
+printf 'worlds: [a, b]\n' > "$cm/manifests/worlds-bad.yaml"
+
+# Case 11: an undeclared dir under A's own (deeper) root resolves to A via
+# path-root, whichever manifest happens to be active.
+out="$(cd "$cm/a/undeclared" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
+check "path-root A (A active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["manifest_error"])')" "WorldA path-root None"
+out="$(cd "$cm/a/undeclared" && KB_MANIFEST="$cm/manifests/worlds-b.yaml" KB_WORLD='' bash "$SCRIPT")"
+check "path-root A (B active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "WorldA path-root"
+
+# Case 12: a dir under B's broader root but outside A's resolves to B via
+# path-root, whichever manifest is active.
+mkdir -p "$cm/y" && git -C "$cm/y" init -q && git -C "$cm/y" commit -q --allow-empty -m init
+out="$(cd "$cm/y" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
+check "path-root B (A active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "WorldB path-root"
+out="$(cd "$cm/y" && KB_MANIFEST="$cm/manifests/worlds-b.yaml" KB_WORLD='' bash "$SCRIPT")"
+check "path-root B (B active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "WorldB path-root"
+
+# Case 13: an exact project declared only in the non-active sibling manifest
+# still wins, source "manifest", and names which manifest matched.
+out="$(cd "$cm/exact-project" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
+check "sibling manifest exact match" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["manifest_matched"])')" "WorldC manifest $cm/manifests/worlds-b.yaml"
+
+# Case 14: the active manifest's ignore list beats path-root, even for a repo
+# that sits inside a declared world's own root.
+out="$(cd "$cm/a/ignored-sub" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
+check "ignored beats path-root" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["ignored"])')" "UNRESOLVED True"
+
+# Case 15: a dir outside every declared root stays UNRESOLVED.
+mkdir -p "$tmp/cm-outside/proj" && git -C "$tmp/cm-outside/proj" init -q && git -C "$tmp/cm-outside/proj" commit -q --allow-empty -m init
+check "outside every root" "$(cd "$tmp/cm-outside/proj" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT" | field world)" "UNRESOLVED"
+
+# Case 16: two different worlds tied at the same root depth are ambiguous, never
+# guessed at. Own directory: this fixture's "same root" shape must not leak into
+# the A-vs-B checks above.
+tie="$tmp/tie"
+mkdir -p "$tie/manifests" "$tie/shared/proj/sub"
+git -C "$tie/shared/proj/sub" init -q && git -C "$tie/shared/proj/sub" commit -q --allow-empty -m init
+cat > "$tie/manifests/worlds-t.yaml" <<EOF
+worlds:
+  - name: T1
+    projects:
+      - {name: t1, repo: $tie/shared/proj}
+  - name: T2
+    projects:
+      - {name: t2, repo: $tie/shared/proj}
+EOF
+check "equal-depth tie is ambiguous" "$(cd "$tie/shared/proj/sub" && KB_MANIFEST="$tie/manifests/worlds-t.yaml" KB_WORLD='' bash "$SCRIPT" | field world)" "UNRESOLVED"
+
+# Case 17: a directory with no git repo at all resolves project "workspace", never
+# the directory's basename.
+mkdir -p "$tmp/not-a-repo"
+check "non-git project workspace" "$(cd "$tmp/not-a-repo" && KB_MANIFEST="$tmp/none.yaml" bash "$SCRIPT" | field project)" "workspace"
 
 # Invariant: the resolver hardcodes no world name.
 if grep -nE "(STX|Inkitt|Kole)" "$ROOT/scripts/resolve_context.py"; then
