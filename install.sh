@@ -4,31 +4,64 @@
 # worklog-persist ships as a self-contained Claude Code plugin with its own local
 # marketplace (.claude-plugin/marketplace.json). Installation registers that
 # marketplace and installs the plugin through the `claude` CLI, which manages its
-# own registry — so unrelated marketplaces, plugins, MCP servers and hooks are
+# own registry, so unrelated marketplaces, plugins, MCP servers and hooks are
 # left untouched. Nothing here edits settings.json or a shared mcp.json.
 #
+# Dry-run by default: without --apply every mutating step is printed, not run.
+#
 # Usage:
-#   ./install.sh [--dry-run]     install (idempotent)
-#   ./install.sh --check         validate plugin structure only (no claude needed)
-#   ./install.sh --enable        re-enable an installed plugin
-#   ./install.sh --disable       disable without uninstalling
-#   ./install.sh --uninstall     remove the plugin
+#   ./install.sh [--apply [--yes]]                install (idempotent)
+#   ./install.sh [--apply [--yes]] --enable       re-enable an installed plugin
+#   ./install.sh [--apply [--yes]] --disable      disable without uninstalling
+#   ./install.sh [--apply [--yes]] --uninstall    remove the plugin
+#   ./install.sh --check                          validate plugin structure only
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN="worklog-persist"
 MARKET="worklog-persist-marketplace"
-DRY=0
+APPLY=0
+YES=0
+ACTION=install
 
-log()  { printf '%s\n' "$*"; }
-run()  { if [ "$DRY" = 1 ]; then log "DRY: $*"; else "$@"; fi; }
+log() { printf '%s\n' "$*"; }
+
+# Print the step, then run it only with --apply, asking first unless --yes.
+# The answer comes from stdin, so a closed stdin means "no".
+step() {
+  if [ "$APPLY" = 0 ]; then
+    log "PLAN: $*"
+    return 0
+  fi
+  if [ "$YES" = 0 ]; then
+    printf 'run: %s ? [y/N] ' "$*"
+    local answer=""
+    read -r answer || true
+    case "$answer" in
+      y|Y|yes) ;;
+      *) log "aborted: $*"; exit 1 ;;
+    esac
+  fi
+  "$@"
+}
+
+# `marketplace add` records $ROOT. From a linked worktree that path dies with the
+# branch, and the installed plugin silently stops loading.
+require_main_checkout() {
+  local git_dir common_dir
+  git_dir="$(git -C "$ROOT" rev-parse --git-dir 2>/dev/null)" || return 0
+  common_dir="$(git -C "$ROOT" rev-parse --git-common-dir)"
+  if [ "$git_dir" != "$common_dir" ]; then
+    log "REFUSING: $ROOT is a linked git worktree." >&2
+    log "  The marketplace would point at a checkout that is deleted with its branch." >&2
+    log "  Run --apply from the main checkout." >&2
+    exit 1
+  fi
+}
 
 # --- structure validation (no external deps beyond python3) ------------------
 check_structure() {
-  local ok=1
-  _fail() { log "FAIL: $*"; ok=0; }
-
-  python3 - "$ROOT" <<'PY' || exit 1
+  python3 - "$ROOT" <<'PY'
 import json, sys, pathlib
 root = pathlib.Path(sys.argv[1])
 errs = []
@@ -93,29 +126,51 @@ require_claude() {
 }
 
 marketplace_present() { claude plugin marketplace list 2>/dev/null | grep -q "$MARKET"; }
-plugin_present()      { claude plugin list 2>/dev/null | grep -q "$PLUGIN"; }
+plugin_present()      { claude plugin list 2>/dev/null | grep -q "${PLUGIN}@${MARKET}"; }
 
 do_install() {
   require_claude
+  [ "$APPLY" = 1 ] && require_main_checkout
   if marketplace_present; then
-    log "marketplace '$MARKET' already registered — skipping add (idempotent)"
+    log "marketplace '$MARKET' already registered, skipping add"
   else
-    run claude plugin marketplace add "$ROOT"
+    step claude plugin marketplace add "$ROOT"
   fi
   if plugin_present; then
-    log "plugin '$PLUGIN' already installed — skipping install (idempotent)"
+    log "plugin '$PLUGIN' already installed, skipping install"
   else
-    run claude plugin install "${PLUGIN}@${MARKET}"
+    step claude plugin install "${PLUGIN}@${MARKET}"
   fi
-  log "done. Enable/disable automatic persistence with: /off  (or scripts/persistence-state.sh)"
+  if [ "$APPLY" = 0 ]; then
+    log "dry-run: nothing changed. Re-run with --apply to execute."
+  else
+    log "done. Toggle automatic persistence with /off or scripts/persistence-state.sh"
+  fi
 }
 
-case "${1:-}" in
-  --check)     check_structure ;;
-  --dry-run)   DRY=1; do_install ;;
-  --enable)    require_claude; run claude plugin enable "$PLUGIN" ;;
-  --disable)   require_claude; run claude plugin disable "$PLUGIN" ;;
-  --uninstall) require_claude; run claude plugin uninstall "$PLUGIN" ;;
-  ""|--install) do_install ;;
-  *) log "usage: install.sh [--dry-run|--check|--enable|--disable|--uninstall]" >&2; exit 2 ;;
+usage() {
+  log "usage: install.sh [--apply [--yes]] [--enable|--disable|--uninstall] | --check" >&2
+  exit 2
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --apply)     APPLY=1 ;;
+    --yes)       YES=1 ;;
+    --dry-run)   APPLY=0 ;;
+    --check)     ACTION=check ;;
+    --install)   ACTION=install ;;
+    --enable)    ACTION=enable ;;
+    --disable)   ACTION=disable ;;
+    --uninstall) ACTION=uninstall ;;
+    *) usage ;;
+  esac
+done
+
+case "$ACTION" in
+  check)     check_structure ;;
+  install)   do_install ;;
+  enable)    require_claude; step claude plugin enable "$PLUGIN" ;;
+  disable)   require_claude; step claude plugin disable "$PLUGIN" ;;
+  uninstall) require_claude; step claude plugin uninstall "$PLUGIN" ;;
 esac

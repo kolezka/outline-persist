@@ -18,7 +18,7 @@ export KB_MANIFEST="$tmp/none.yaml"
 
 # Case 1: git repo, no remote -> project = dir name, world = UNRESOLVED sentinel.
 mkdir -p "$tmp/myproj" && git -C "$tmp/myproj" init -q && git -C "$tmp/myproj" commit -q --allow-empty -m init
-out="$(cd "$tmp/myproj" && KB_WORLD= bash "$SCRIPT")"
+out="$(cd "$tmp/myproj" && KB_WORLD='' bash "$SCRIPT")"
 check "no-remote project" "$(printf '%s' "$out" | field project)" "myproj"
 check "no-remote world sentinel" "$(printf '%s' "$out" | field world)" "UNRESOLVED"
 

@@ -10,7 +10,7 @@ It is a persistence layer only. Graph synchronization, reflection promotion and
 curriculum clustering are deliberately **not** part of this plugin.
 
 The plugin is named `worklog-persist`, not `outline-persist`: the `outline` name
-belongs to the Outline MCP server (`mcp__outline__*`) and the separate `outline`
+belongs to the Outline MCP server and the separate `outline`
 KB skill, and a plugin with the same name shadows them. Only the plugin identity
 changed. The MCP server entry, `OUTLINE_API_TOKEN` and the Outline document
 routing are untouched.
@@ -32,12 +32,20 @@ transport (`https://outline.raqz.link/mcp`, Cloudflare Access + Bearer token, al
 from environment variables — no credentials are stored in this repo).
 
 ```bash
-./install.sh            # register local marketplace + install (idempotent)
-./install.sh --check    # validate plugin structure only (no claude needed)
-./install.sh --dry-run  # print the exact install commands without running them
+make                         # every target, with a one-line description each
+./install.sh                 # dry-run by default: prints the plan, touches nothing
+./install.sh --apply         # execute, confirming each step
+./install.sh --apply --yes   # non-interactive
+./install.sh --check         # validate plugin structure only (no claude needed)
+
+make plan                    # == ./install.sh
+make install                 # == ./install.sh --apply, and REFUSES from a worktree
 ```
 
-Re-running `./install.sh` is safe: it skips the marketplace add and plugin install
+`--apply` refuses to run from a linked git worktree. `marketplace add` records the
+checkout path, and a worktree path is deleted with its branch.
+
+Re-running `./install.sh --apply` is safe: it skips the marketplace add and plugin install
 if they are already present, and never edits your `settings.json` or a shared
 `mcp.json` — the `claude` CLI manages its own registry, so unrelated marketplaces,
 plugins, MCP servers and hooks are left untouched.
@@ -67,9 +75,9 @@ bash scripts/persistence-state.sh off        # or from a shell
 bash scripts/persistence-state.sh on         # re-enable
 WORKLOG_HOOK_OFF=1                            # env override forces off
 
-./install.sh --disable                        # disable the whole plugin
-./install.sh --enable
-./install.sh --uninstall
+./install.sh --apply --disable                # disable the whole plugin
+./install.sh --apply --enable
+./install.sh --apply --uninstall
 ```
 
 When disabled, the SessionStart hook stops injecting the durable-memory rule and
@@ -136,12 +144,21 @@ Reading the manifest needs PyYAML. Without it the resolver reports
 ## Tests
 
 ```bash
-bash tests/run.sh                 # full offline suite (redaction, identity, off-switch, structure)
-WORKLOG_PERSIST_LIVE=1 bash tests/test_live_outline.sh   # opt-in reachability check
+make check    # everything offline: pytest suite, shell suites, structure check
+make lint     # shellcheck at warning severity
+make live     # opt-in reachability check against the Outline server in .mcp.json
 ```
 
 Offline tests use local fixtures and mocks; the live test is opt-in and needs no
 credentials in CI.
+
+## Documentation
+
+`docs/` describes the plugin by building block, using the same layout as
+`dotfiles-next`: each block has `README`, `CONTRACTS`, `INVARIANTS`, `GAPS` and
+`OPERATIONS` pages. Start at [`docs/README.md`](docs/README.md). Rules for writing
+there are in [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md), and
+`tests/test_docs_layout.py` enforces them.
 
 ## Scope boundary
 
