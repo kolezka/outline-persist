@@ -11,7 +11,10 @@ if [ "${WORKLOG_PERSIST_LIVE:-}" != 1 ]; then
 fi
 
 : "${OUTLINE_API_TOKEN:?need OUTLINE_API_TOKEN for live test}"
-url="https://outline.raqz.link"
+# Read the endpoint from .mcp.json so this test checks the server the plugin uses.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mcp_url="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["mcpServers"]["outline"]["url"])' "$ROOT/.mcp.json")"
+url="${mcp_url%/mcp}"
 code="$(curl -s -o /dev/null -w '%{http_code}' \
   -H "Authorization: Bearer ${OUTLINE_API_TOKEN}" \
   ${CF_ACCESS_CLIENT_ID:+-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"} \

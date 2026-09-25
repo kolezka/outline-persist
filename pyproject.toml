@@ -1,0 +1,15 @@
+[project]
+name = "worklog-persist"
+version = "0.1.0"
+description = "Durable Outline-backed work-state persistence for Claude Code sessions"
+requires-python = ">=3.11"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+# Not a Python package: pyproject exists only to pin the test runner.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

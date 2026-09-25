@@ -15,10 +15,18 @@ This skill is the operational contract. The seven slash commands
 (`/load`, `/start`, `/checkpoint`, `/handoff`, `/complete`, `/dry-run`, `/off`)
 are thin entry points that run the relevant part of this contract.
 
-The MCP server is registered as `outline`; its tools are `mcp__outline__*`
-(`list_collections`, `list_documents`, `fetch`, `create_document`,
-`update_document`, `move_document`). They may be deferred — load schemas with
-ToolSearch first (`select:mcp__outline__list_collections,mcp__outline__list_documents,mcp__outline__create_document,mcp__outline__update_document,mcp__outline__fetch`).
+The Outline tools are `list_collections`, `list_documents`, `fetch`,
+`create_document`, `update_document` and `move_document`. Their prefix depends on
+where the `outline` server is configured:
+
+- `mcp__outline__*` when the user also configures `outline` at user, project or
+  local scope. Claude Code then connects once, using that definition.
+- `mcp__plugin_worklog-persist_outline__*` when only this plugin's `.mcp.json`
+  defines it.
+
+The tools may be deferred. Find them with ToolSearch (query `outline
+list_collections`), then load the schemas of the prefix that exists. Never assume
+one prefix.
 
 Helper scripts live under `${CLAUDE_PLUGIN_ROOT}/scripts/`:
 `resolve-context.sh` (identity), `redact.py` (secret redaction),
