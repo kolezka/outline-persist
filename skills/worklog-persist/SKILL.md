@@ -57,26 +57,40 @@ JSON. Use its paths as given; never rebuild them by hand.
 
 | Field | Meaning |
 |---|---|
-| `world`, `project` | From the kb manifest when the repo is declared there |
-| `world_source` | `manifest`, `env` (`$KB_WORLD`) or `fallback` |
+| `world`, `project` | From a kb manifest when the repo is declared there, else inferred |
+| `world_source` | `manifest`, `env` (`$KB_WORLD`), `path-root` or `fallback` |
+| `manifest_matched` | Which manifest file an exact declaration (tiers 1 or 2) came from |
 | `kb_path` | Project folder in Outline (`kb_folder` override, else `<root>/<World>/<project>`) |
 | `tasks_path`, `record_path` | `<kb_path>/Tasks` and `<kb_path>/Tasks/<slug>` |
-| `root_collection`, `global_collection`, `archive_collection` | From the manifest `outline:` block |
+| `root_collection`, `global_collection`, `archive_collection` | From the active manifest's `outline:` block |
 | `repo_root`, `worktree`, `branch` | `repo_root` is the main checkout, also from a linked worktree |
-| `ignored` | The manifest lists this repo under `ignore:` |
+| `ignored` | The active manifest lists this repo under `ignore:` |
 | `mirror_dir` | Local read-only mirror of the project folder, if present |
-| `manifest`, `manifest_error` | Which manifest was read, or why none was |
+| `manifest`, `manifest_error` | Which manifest was active, or why it could not be read |
 
-The manifest is the one the `kb` CLI reads: `$KB_MANIFEST`, else
-`~/.config/kb/worlds.yaml`. A world overlay sets `KB_MANIFEST` to its own file, so
-the same repo can resolve differently per context. That is intended.
+The active manifest is the one the `kb` CLI reads: `$KB_MANIFEST`, else
+`~/.config/kb/worlds.yaml`. Which manifest is active depends on which shell
+environment launched this session, not on the current directory, so it alone is
+not enough to place a repo correctly. Path root (tier 4 below) exists for that
+reason: an undeclared repo still resolves to the world whose own repos it sits
+under, regardless of which manifest happens to be active.
 
-- **World** is never hardcoded. Precedence: manifest match, then `$KB_WORLD`, then
-  `UNRESOLVED`. On `UNRESOLVED`, ask the operator once (offer `candidate_worlds`),
-  then proceed. Do not write anything until the world is known.
+- **World** is never hardcoded. Precedence: (1) an exact declaration in the
+  active manifest; (2) an exact declaration in another `worlds*.yaml` sibling of
+  the active manifest's directory (default `~/.config/kb`) -- both give
+  `world_source` `manifest`, and `manifest_matched` names the file; (3)
+  `$KB_WORLD`; (4) path root: the world whose declared repos' common ancestor is
+  the deepest ancestor-or-equal of this repo, `world_source` `path-root` (a tie
+  between two different worlds at the same depth is ambiguous and left
+  unresolved, never guessed); (5) `UNRESOLVED`. An ignored repo (the active
+  manifest's `ignore:` list) gets no world from tiers 3 or 4 either. On
+  `UNRESOLVED`, ask the operator once (offer `candidate_worlds`), then proceed.
+  Do not write anything until the world is known.
 - **Project** is the manifest `name` when declared (it can differ from the repo
   name), else the basename of `git remote get-url origin`, else the main checkout
-  directory name. A worktree directory name is never the project.
+  directory name. A worktree directory name is never the project. When the current
+  directory is not a git repo at all, project is `workspace`, never the directory's
+  basename.
 - **Ignored repo**: the operator decided it has no Outline folder. Do not bootstrap
   one. Ask before writing anything for it.
 - **Task slug**: lowercase kebab-case, shared across `Specs`/`Plans`/`Tasks`.
@@ -178,7 +192,16 @@ change updates that flag. If the parent is missing, report the record as orphane
 - **dry-run** — show the intended read or write (target collection/folder/doc, the
   fields, the redacted body) without calling any write tool.
 - **off** — `bash ${CLAUDE_PLUGIN_ROOT}/scripts/persistence-state.sh off` disables the
-  automatic SessionStart rule without removing the plugin; `... on` re-enables.
+  automatic SessionStart rule and the Stop guard below without removing the plugin;
+  `... on` re-enables both.
+
+A `Stop` hook (`scripts/stop-guard.sh`) also runs when a turn ends. If substantive
+work (edits, a commit/push/PR, or a long run of tool calls) happened since the last
+Outline write in the transcript, it blocks the stop once and asks the model to run
+this skill (checkpoint, handoff or complete) before finishing. It never blocks twice
+in a row, and it never fires when persistence is off. A decline ("trivial, stopping")
+is remembered per session, so the same already-shown work is not blocked again on the
+next turn; only new work after the decline triggers another block.
 
 ## Offline mirror (read-only)
 

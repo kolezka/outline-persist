@@ -80,8 +80,9 @@ WORKLOG_HOOK_OFF=1                            # env override forces off
 ./install.sh --apply --uninstall
 ```
 
-When disabled, the SessionStart hook stops injecting the durable-memory rule and
-no automatic writes happen. The manual commands still work.
+When disabled, the SessionStart hook stops injecting the durable-memory rule, the
+Stop hook stops blocking unpersisted turns, and no automatic writes happen. The
+manual commands still work.
 
 ## Commands
 
@@ -122,8 +123,14 @@ skill in dotfiles-next use. It reads the same manifest: `$KB_MANIFEST`, else
 - A repo declared under `worlds[].projects[]` gets its world, project name and
   optional `kb_folder` from the manifest. A linked git worktree resolves to its
   main checkout first, so it maps to the same project.
-- An undeclared repo uses `$KB_WORLD`, else the world stays `UNRESOLVED` and the
-  agent asks once. A repo under `ignore:` gets no world and no folder by default.
+- An undeclared repo can still match an exact declaration in another
+  `worlds*.yaml` sibling of the active manifest's directory; failing that it uses
+  `$KB_WORLD`, then path root (the declared world whose own repos are the deepest
+  ancestor-or-equal of this one; a tie between two different worlds is left
+  unresolved, never guessed); otherwise the world stays `UNRESOLVED` and the agent
+  asks once. This makes resolution depend on the repo's own location, not on
+  which manifest happened to be active when the session started. A repo under
+  `ignore:` gets no world and no folder by default.
 - Records live at `<kb_path>/Tasks/<task-slug>`, where `kb_path` is `kb_folder` or
   `<root_collection>/<World>/<project>`. Ticket slugs (`AD-163-uat-checklist`)
   are accepted.
