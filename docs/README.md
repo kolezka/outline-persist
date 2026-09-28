@@ -3,7 +3,7 @@ block: _root
 doc: README
 verified_against: 44e1f73
 verified_on: 2026-09-28
-unassigned: [README.md, AGENTS.md, .claude/, .ai/, .gitkeep, docs/]
+unassigned: [README.md, AGENTS.md, .claude/, .ai/, .gitkeep, .gitattributes, .repo-intel.json, docs/]
 ---
 
 # docs: the plugin by building block
@@ -73,4 +73,5 @@ The `unassigned:` front matter above lists files no block owns:
 | `AGENTS.md`, `.claude/` | Rules for working in this repo, not a part of the plugin |
 | `.ai/` | Session plans and lessons |
 | `.gitkeep` | Placeholder from the repo template |
+| `.gitattributes`, `.repo-intel.json` | Repo tooling config for codegraph and graphify, not a part of the plugin |
 | `docs/` | This tree. It describes the plugin; it is not a component of it |
