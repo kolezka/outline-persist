@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 .venv/
 .claude/tdd-guard/data/*.json
+.codegraph/
+graphify-out/cache/
