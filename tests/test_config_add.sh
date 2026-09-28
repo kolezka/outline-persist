@@ -126,4 +126,22 @@ rc=0; err="$(PATH="$tmp/nogit-bin" WORKLOG_CONFIG="$gcfg" "$py" "$ROOT/scripts/c
 check "no git: exit 0, no traceback" "$rc $(grep -c Traceback <<<"$err" || true)" "0 0"
 check "no git: stored as given" "$(repos "$gcfg")" "$(cd "$tmp/two" && pwd -P)"
 
+# 15. A worktree path stored by older code is compared as its main checkout.
+wt="$(cd "$tmp/one-wt" && pwd -P)"
+scfg="$tmp/stale.yaml"
+printf 'worlds:\n  - name: A\n    projects:\n      - {name: p, repo: %s}\n' "$wt" > "$scfg"
+before="$(sum "$scfg")"
+rc=0; WORKLOG_CONFIG="$scfg" bash "$ADD" project --world B --name p --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
+check "stale worktree entry: other world refused" "$([ "$rc" != 0 ] && echo yes) $(sum "$scfg")" "yes $before"
+rc=0; WORKLOG_CONFIG="$scfg" bash "$ADD" project --world A --name p --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
+check "stale worktree entry: same entry rewritten" "$rc $(repos "$scfg")" "0 $one"
+check "stale worktree entry: now resolves" "$(cd "$tmp/one" && WORKLOG_CONFIG="$scfg" bash "$RESOLVE" | ident)" "A config p raqz.pl/A/p False"
+icfg="$tmp/stale-ignore.yaml"
+printf 'ignore:\n  - %s\n' "$wt" > "$icfg"
+before="$(sum "$icfg")"
+rc=0; WORKLOG_CONFIG="$icfg" bash "$ADD" project --world A --name p --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
+check "stale worktree ignore: declare refused" "$([ "$rc" != 0 ] && echo yes) $(sum "$icfg")" "yes $before"
+rc=0; WORKLOG_CONFIG="$icfg" bash "$ADD" ignore --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
+check "stale worktree ignore: same entry rewritten" "$rc $(python3 -c 'import sys,yaml;print(*yaml.safe_load(open(sys.argv[1]))["ignore"])' "$icfg")" "0 $one"
+
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }

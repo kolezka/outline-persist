@@ -13,7 +13,9 @@ move. A file that cannot be parsed, or has the wrong shape, is never rewritten.
 Writes go to a temp file in the same dir, then replace the config in one step.
 A symlinked config is written through: the link stays, its target is replaced.
 A repo path in a linked git worktree is stored as its main checkout, the path
-the resolver matches.
+the resolver matches. Stored paths are compared the same way; the same entry
+stored under a worktree path by an older version is rewritten to the main
+checkout.
 
 Exit codes: 0 written or no change, 1 refused, 2 bad arguments.
 """
@@ -67,12 +69,23 @@ def declared(data):
     """Yield (world name, project dict, resolved repo path) for every project."""
     for w in data.get("worlds") or []:
         for p in w.get("projects") or []:
-            yield w.get("name"), p, expand(p.get("repo") or "")
+            yield w.get("name"), p, canonical(p.get("repo") or "")
+
+
+def canonical(stored):
+    """A stored repo path compared as its main checkout, since older versions stored worktree paths."""
+    path = expand(stored)
+    if not stored or not path or not path.is_dir():
+        return path
+    try:
+        return main_checkout(path)
+    except Refused:
+        return path
 
 
 def ignored_by(data, repo):
     for entry in data.get("ignore") or []:
-        i = expand(entry)
+        i = canonical(entry)
         if i and (i == repo or i in repo.parents):
             return entry
     return None
@@ -82,6 +95,9 @@ def add_project(data, world, name, repo, kb_folder):
     for w, p, r in declared(data):
         if r == repo:
             if w == world and p.get("name") == name and p.get("kb_folder") == kb_folder:
+                if expand(p.get("repo")) != repo:
+                    p["repo"] = str(repo)
+                    return f"updated project {name!r} in world {world!r} to repo {repo}"
                 return None
             raise Refused(f"{repo} is already declared as world {w!r}, project "
                           f"{p.get('name')!r}; ask the operator, nothing changed")
@@ -105,6 +121,11 @@ def add_project(data, world, name, repo, kb_folder):
 
 
 def add_ignore(data, repo):
+    entries = data.get("ignore") or []
+    for n, entry in enumerate(entries):
+        if canonical(entry) == repo and expand(entry) != repo:
+            entries[n] = str(repo)
+            return f"updated ignore entry {entry!r} to {repo}"
     if ignored_by(data, repo):
         return None
     for w, p, r in declared(data):
