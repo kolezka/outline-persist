@@ -207,9 +207,4 @@ check "equal-depth tie is ambiguous" "$(cd "$tie/shared/proj/sub" && WORKLOG_CON
 mkdir -p "$tmp/not-a-repo"
 check "non-git project workspace" "$(cd "$tmp/not-a-repo" && WORKLOG_CONFIG="$tmp/none.yaml" bash "$SCRIPT" | field project)" "workspace"
 
-# Invariant: the resolver hardcodes no world name.
-if grep -nE "(STX|Inkitt|Kole)" "$ROOT/scripts/resolve_context.py"; then
-  echo "FAIL: world name literal in resolve_context.py"; fails=$((fails+1))
-fi
-
 [ "$fails" = 0 ] && echo "PASS test_context" || { echo "$fails failure(s)"; exit 1; }

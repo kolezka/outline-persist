@@ -41,11 +41,13 @@ under.
    clean machine.
 
    The same suite checks that the pre-0.3 world env var and manifest have no
-   effect (`tests/test_context.sh::"old coupling ignored"`), and greps the
-   resolver for world-name literals
-   (`tests/test_context.sh::"world name literal in resolve_context.py"`).
-   [verified] Defect prevented: world routing quietly coming back from another
-   tool's settings, or from a name typed into the code.
+   effect (`tests/test_context.sh::"old coupling ignored"`), and routes made-up
+   world names through the env (`tests/test_context.sh::"WORKLOG_WORLD honored"`),
+   the config (`tests/test_context.sh::"config identity"`) and path root
+   (`tests/test_context.sh::"path-root: deepest root wins"`). [verified] No test
+   greps for real world names, since naming them would put them in a tracked
+   file. [verified] Defect prevented: world routing quietly coming back from
+   another tool's settings, or from a name typed into the code.
 
 5. **Redaction is checked against ordinary text, not only against secrets.**
    `tests/test_redact.py::test_preserves_ordinary_text()` asserts a plain
