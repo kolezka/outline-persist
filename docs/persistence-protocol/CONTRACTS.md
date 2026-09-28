@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: CONTRACTS
-verified_against: 60792a3
+verified_against: 1528101
 verified_on: 2026-09-28
 ---
 
@@ -169,24 +169,36 @@ Behaviour [verified, from the code and `tests/test_config_add.sh`]:
   (`scripts/config_add.py::main_checkout()`, reusing
   `scripts/resolve_context.py::canonical_repo()`), which is what the resolver
   matches. A declare from the worktree and one from the main checkout are the
-  same entry.
+  same entry. The top level is found with `os.path.samefile`, so a path typed
+  in another case on a case-insensitive disk is stored in the on-disk case. A
+  path that cannot be related to its top level is refused with exit `2`. With
+  no `git` binary the path is stored as given.
+- Stored repo paths (projects and `ignore`) are compared through the same
+  mapping (`scripts/config_add.py::canonical()`), so an entry an older version
+  stored under a worktree path still counts as that repo.
 - The same entry again is a no-op: exit `0`, `no change` on stdout, file
-  untouched.
+  untouched. The one exception: when the stored path is a worktree path that
+  maps to this repo, the entry is rewritten to the main checkout, because the
+  resolver never matches the old spelling.
 - A repo already declared differently (another world, name or `kb_folder`), a
   declared repo passed to `ignore`, or an ignored repo passed to `project`:
   exit `1`, nothing written.
 - A file that does not parse or fails `scripts/resolve_context.py::shape_error()`:
   exit `1`, file left byte-identical.
 - No PyYAML: exit `1`, nothing written.
-- A world or project name that is empty or holds `/`, or a `--repo` that is not
-  a directory: exit `2`, nothing written.
+- A world or project name that is empty or holds `/`, a `--repo` that is not
+  a directory, or a worktree subdir that does not exist in the main checkout:
+  exit `2`, nothing written.
 - Writes go to a temp file in the same dir, then `os.replace`
-  (`scripts/config_add.py::write()`). A symlinked config is written through:
-  the temp file and the replace happen next to the real target, so the link
-  stays a link and the target's mode is kept.
+  (`scripts/config_add.py::write()`). A symlinked config, or a chain of
+  symlinks, is written through: the temp file and the replace happen next to
+  the real target, so the link stays a link and the target's mode is kept. A
+  symlink loop is not detected; see [GAPS](GAPS.md).
 
-enforcement: `tests/test_config_add.sh` (every bullet above except the mode
-copy and `fsync`, test suite only). The rule that an agent uses this script and
+enforcement: `tests/test_config_add.sh` (every bullet above, test suite only,
+except `fsync`, the symlink chain and the refusal of a path that cannot be
+related to its top level, which no test covers; the case-insensitive case runs
+only on a case-insensitive disk). The rule that an agent uses this script and
 never edits the YAML by hand is prompt text only
 (`skills/worklog-persist/SKILL.md::"never by editing the YAML"`): convention.
 

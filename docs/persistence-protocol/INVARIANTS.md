@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: INVARIANTS
-verified_against: 60792a3
+verified_against: 1528101
 verified_on: 2026-09-28
 ---
 
@@ -120,12 +120,17 @@ byte-identical (test suite only) [verified].
 ### 13. The config writer is idempotent and never moves a repo
 
 The same entry twice leaves the file untouched; a repo declared under another
-world is refused (`scripts/config_add.py::add_project()`) [verified]. Defect
+world is refused (`scripts/config_add.py::add_project()`) [verified]. Stored
+paths are compared as their main checkout, so this holds for entries an older
+version stored under a worktree path; such an entry, declared again unchanged,
+is rewritten once to the main checkout so it routes [verified]. Defect
 prevented: duplicate entries where the first match wins, or records for one
 project silently starting to land in another world's folder.
-`tests/test_config_add.sh::"idempotent re-add: byte-identical"` and
-`tests/test_config_add.sh::"conflict: file untouched"` cover it (test suite
-only) [verified].
+`tests/test_config_add.sh::"idempotent re-add: byte-identical"`,
+`tests/test_config_add.sh::"conflict: file untouched"`,
+`tests/test_config_add.sh::"stale worktree entry: other world refused"` and
+`tests/test_config_add.sh::"stale worktree entry: same entry rewritten"` cover
+it (test suite only) [verified].
 
 ### 14. World names come from Outline or the user, never from the plugin
 

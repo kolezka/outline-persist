@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: GAPS
-verified_against: 60792a3
+verified_against: 1528101
 verified_on: 2026-09-28
 ---
 
@@ -62,11 +62,28 @@ says to fix that before onboarding [verified].
 formatting are lost on the first write [verified]. Two writers at once are not
 locked against each other; the last `os.replace` wins [inferred: no lock in the
 code]. Nothing stops an agent from editing the YAML by hand instead of using the
-script; that rule is prompt text only [verified]. A `--repo` below a repo's top
-level is stored as given, and the resolver matches only the top level, so such
-an entry never routes [inferred: `scripts/resolve_context.py::find_project()`
-compares against `repo_root`, and `scripts/config_add.py::main_checkout()` keeps
-the subpath].
+script; that rule is prompt text only [verified].
+
+A `project --repo` below a repo's top level is stored as that subpath (mapped to
+the main checkout when typed in a worktree), and the resolver matches only the
+top level, so such an entry never routes [inferred:
+`scripts/resolve_context.py::find_project()` compares against `repo_root`, and
+`scripts/config_add.py::main_checkout()` keeps the subpath].
+
+A symlink loop at the config path is not detected. `os.path.realpath` stops
+inside the loop, the missing file reads as empty, and one link of the loop is
+replaced by a regular file that holds only the new entry [verified: run by hand
+on 2026-09-28 with a two-link loop]. The version before the write-through fix
+replaced the configured link the same way [inferred: it called `os.replace` on
+the configured path].
+
+Both the writer and the resolver honour `GIT_DIR` from the environment through
+`scripts/resolve_context.py::canonical_repo()`. With `GIT_DIR` set to a linked
+worktree's git dir, `ignore --repo` on an unrelated repo stored the other repo's
+main checkout, and the resolver run from the unrelated repo reported that main
+checkout as `repo_root` [verified: run by hand on 2026-09-28]. Not fixed. Nothing in
+the plugin sets it [verified: no `GIT_DIR` in `hooks/`, `scripts/`, `skills/` or
+`commands/`], but an inherited environment can.
 
 ## Onboarding is prompt text
 
