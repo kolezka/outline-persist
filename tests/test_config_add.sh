@@ -105,6 +105,7 @@ check "worktree: resolves from main" "$(cd "$tmp/one" && WORKLOG_CONFIG="$wcfg" 
 before="$(sum "$wcfg")"
 rc=0; out="$(WORKLOG_CONFIG="$wcfg" bash "$ADD" project --world Alpha --name proj-one --repo "$tmp/one")" || rc=$?
 check "worktree then main: same repo, no change" "$rc $(sum "$wcfg") $(grep -c 'no change' <<<"$out")" "0 $before 1"
+check "worktree: stored repo is main checkout" "$(repos "$wcfg")" "$one"
 
 # 13. A path typed in another case (case-insensitive disk) is stored in the on-disk case.
 mkdir -p "$tmp/MyRepo" && git -C "$tmp/MyRepo" init -q
