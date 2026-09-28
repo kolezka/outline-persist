@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: DECISIONS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -18,10 +18,10 @@ Why this block is shaped this way, and what it deliberately gave up.
 "Run the worklog-persist skill's **\<verb\>** step"
 (`commands/handoff.md::"Run the worklog-persist skill's"`) [verified] rather
 than a restatement of the lifecycle rules. The alternative that lost: writing
-the full read/redact/idempotency/labeling logic into each of the seven command
+the full read/redact/idempotency/labeling logic into each of the eight command
 files (or into the SessionStart hook, which instead only reminds the agent of
 the rule per [`../session-hook/README.md`](../session-hook/README.md)). That
-would mean seven, or eight, near-duplicate copies of the same rules drifting
+would mean eight, or nine, near-duplicate copies of the same rules drifting
 apart the first time one of them needed a fix
 [inferred: the one-file-plus-pointers shape only makes sense as a defense
 against that drift; no comment in the source names the rejected alternative
@@ -68,17 +68,39 @@ environment.
 [historical: 2026-09-28, this change] Up to 0.2 the resolver read a YAML
 manifest owned by a separate KB tool, plus that tool's world env var, and
 offered a local read-only mirror written by the same tool. 0.3 cuts all of it.
-The plugin now reads only its own TOML file
+The plugin now reads only its own YAML file
 (`scripts/resolve_context.py::config_path()`) and `$WORKLOG_WORLD` [verified].
-Why: a shared file couples two release cycles, and the old path needed a
-third-party YAML parser, while `tomllib` ships with Python 3.11, which
-`pyproject.toml` already requires [verified]. The alternatives that lost:
+Why: a shared file couples two release cycles. The alternatives that lost:
 reading both files with the old one as a fallback (two sources of truth for the
 same world), and keeping the old env var as an alias (a stale shell export
-would keep routing records with no visible cause). The cost: an operator
-upgrading from 0.2 has to write the TOML file by hand, and until then every repo
-resolves to `UNRESOLVED` with `config_error` set. `tests/test_context.sh::"old coupling ignored"`
-[verified] keeps the old names from quietly coming back.
+would keep routing records with no visible cause). The cost: until a repo is
+onboarded it resolves to `UNRESOLVED` with `config_error` set.
+`tests/test_context.sh::"old coupling ignored"` [verified] keeps the old names
+from quietly coming back.
+
+## YAML, not TOML
+
+[historical: 2026-09-28] An interim 0.3 draft used TOML through the standard
+library `tomllib`, which removed the PyYAML dependency. The operator chose YAML:
+the schema is the one operators already have, so upgrading is a copy, not a
+rewrite, and the writer can dump YAML with the same library it reads it with
+(the standard library cannot write TOML) [inferred]. The cost is PyYAML as a
+runtime dependency again; its absence is reported, never a crash
+(`scripts/resolve_context.py::"PyYAML is not installed"`) [verified].
+
+## Onboarding through a writer script, worlds read from Outline
+
+The hook cannot prompt, so it injects an instruction to run onboarding
+(`scripts/session-start.sh::"run the onboarding flow"`) [verified]. The agent
+asks, and `scripts/config-add.sh` writes. Why a script: the rules that keep the
+file safe (no duplicates, no silent move to another world, never rewrite a
+file it cannot parse, atomic replace) are code that `tests/test_config_add.sh`
+can check, where an agent editing YAML by hand could break any of them
+[inferred]. Why worlds come from Outline: the top-level documents under
+`root_collection` are the worlds that actually exist, so a list in the config
+or in the plugin would drift from them [inferred]. The alternatives that lost:
+letting the agent edit the YAML, and offering only `candidate_worlds` from the
+config, which is empty for a new operator.
 
 ## No offline mirror
 

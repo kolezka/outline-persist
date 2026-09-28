@@ -15,7 +15,7 @@ trap 'rm -rf "$tmp"' EXIT
 # Isolate from the host config and env. The two legacy names are unset so the
 # "old coupling ignored" case below controls them fully.
 unset WORKLOG_WORLD KB_WORLD KB_MANIFEST || true
-export WORKLOG_CONFIG="$tmp/none.toml"
+export WORKLOG_CONFIG="$tmp/none.yaml"
 
 # Case 1: git repo, no remote -> project = dir name, world = UNRESOLVED sentinel.
 mkdir -p "$tmp/myproj" && git -C "$tmp/myproj" init -q && git -C "$tmp/myproj" commit -q --allow-empty -m init
@@ -23,15 +23,17 @@ out="$(cd "$tmp/myproj" && WORKLOG_WORLD='' bash "$SCRIPT")"
 check "no-remote project" "$(printf '%s' "$out" | field project)" "myproj"
 check "no-remote world sentinel" "$(printf '%s' "$out" | field world)" "UNRESOLVED"
 check "missing config reported" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["config"],d["config_error"])')" \
-  "None config not found: $tmp/none.toml"
+  "None config not found: $tmp/none.yaml"
 
 # Case 2: WORKLOG_WORLD overrides -> proves world is NOT hardcoded.
 out="$(cd "$tmp/myproj" && WORKLOG_WORLD=SomeWorld bash "$SCRIPT")"
 check "WORKLOG_WORLD honored" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "SomeWorld env"
 
 # Case 3: the old kb coupling is gone. A legacy world env var and a valid legacy
-# YAML manifest that declares this repo must both be ignored.
-cat > "$tmp/legacy.yaml" <<EOF
+# manifest at the old path shape, named both by KB_MANIFEST and by the old
+# default under $HOME, must all be ignored.
+mkdir -p "$tmp/home/.config/kb"
+cat > "$tmp/home/.config/kb/worlds.yaml" <<EOF
 version: 1
 worlds:
   - name: Legacy
@@ -42,7 +44,10 @@ legacy() { python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d
 check "old coupling ignored: KB_WORLD" \
   "$(cd "$tmp/myproj" && KB_WORLD=X bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
 check "old coupling ignored: KB_WORLD + KB_MANIFEST" \
-  "$(cd "$tmp/myproj" && KB_WORLD=X KB_MANIFEST="$tmp/legacy.yaml" bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
+  "$(cd "$tmp/myproj" && HOME="$tmp/home" KB_WORLD=X KB_MANIFEST="$tmp/home/.config/kb/worlds.yaml" bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
+# With WORKLOG_CONFIG unset the default is the plugin's own file under $HOME.
+check "default config path" "$(cd "$tmp/myproj" && env -u WORKLOG_CONFIG HOME="$tmp/home" bash "$SCRIPT" | field config_path)" \
+  "$tmp/home/.config/worklog-persist/config.yaml"
 
 # Case 4: remote origin -> project = repo basename sans .git.
 git -C "$tmp/myproj" remote add origin "git@github.com:acme/coolrepo.git"
@@ -64,30 +69,22 @@ check "invalid slug rejected" "$rc" "2"
 mkdir -p "$tmp/other" "$tmp/skipme"
 git -C "$tmp/other" init -q && git -C "$tmp/other" commit -q --allow-empty -m init
 git -C "$tmp/skipme" init -q && git -C "$tmp/skipme" commit -q --allow-empty -m init
-cat > "$tmp/config.toml" <<EOF
-ignore = ["$tmp/skipme"]
-
-[outline]
-root_collection = "RootKB"
-global_collection = "Notebook"
-archive_collection = "Attic"
-
-[[worlds]]
-name = "Alpha"
-
-[[worlds.projects]]
-name = "declared-name"
-repo = "$tmp/myproj"
-
-[[worlds]]
-name = "Beta"
-
-[[worlds.projects]]
-name = "other"
-repo = "$tmp/other"
-kb_folder = "RootKB/Beta/custom-folder"
+cat > "$tmp/config.yaml" <<EOF
+outline:
+  root_collection: RootKB
+  global_collection: Notebook
+  archive_collection: Attic
+worlds:
+  - name: Alpha
+    projects:
+      - {name: declared-name, repo: $tmp/myproj}
+  - name: Beta
+    projects:
+      - {name: other, repo: $tmp/other, kb_folder: RootKB/Beta/custom-folder}
+ignore:
+  - $tmp/skipme
 EOF
-export WORKLOG_CONFIG="$tmp/config.toml"
+export WORKLOG_CONFIG="$tmp/config.yaml"
 
 # Case 7: declared repo -> world, name and collections from the config, which
 # beats WORKLOG_WORLD.
@@ -95,7 +92,7 @@ out="$(cd "$tmp/myproj" && WORKLOG_WORLD=Wrong bash "$SCRIPT" t)"
 check "config identity" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["project"],d["record_path"],d["global_collection"],d["archive_collection"])')" \
   "Alpha config declared-name RootKB/Alpha/declared-name/Tasks/t Notebook Attic"
 check "config path reported" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["config"],d["config_error"])')" \
-  "$tmp/config.toml None"
+  "$tmp/config.yaml None"
 
 # Case 8: a linked worktree maps to its main checkout's project, not its dir name.
 git -C "$tmp/myproj" worktree add -q -b feat/x "$tmp/wt-elsewhere"
@@ -122,14 +119,19 @@ mkdir -p "$tmp/skipme/sub" && git -C "$tmp/skipme/sub" init -q
 check "nested ignored" "$(cd "$tmp/skipme/sub" && bash "$SCRIPT" | field ignored)" "True"
 
 # A config with the wrong shape is reported, never a crash.
-printf 'outline = ["x"]\nworlds = ["a", "b"]\nignore = 3\n' > "$tmp/bad.toml"
-check "malformed config" "$(cd "$tmp/myproj" && WORKLOG_CONFIG="$tmp/bad.toml" bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"][:16])')" \
+printf 'outline: [x]\nworlds: [a, b]\nignore: 3\n' > "$tmp/bad.yaml"
+check "malformed config" "$(cd "$tmp/myproj" && WORKLOG_CONFIG="$tmp/bad.yaml" bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"][:16])')" \
   "UNRESOLVED None config malformed"
 
-# A file that is not TOML at all is reported, never a crash, and the env still works.
-printf 'worlds:\n  - name: [unclosed\n' > "$tmp/garbage.toml"
-check "unparseable config" "$(cd "$tmp/myproj" && WORKLOG_CONFIG="$tmp/garbage.toml" WORKLOG_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"][:17])')" \
+# A file that is not YAML at all is reported, never a crash, and the env still works.
+printf 'worlds:\n  - name: [unclosed\n' > "$tmp/garbage.yaml"
+check "unparseable config" "$(cd "$tmp/myproj" && WORKLOG_CONFIG="$tmp/garbage.yaml" WORKLOG_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"][:17])')" \
   "E None config unreadable"
+
+# Without PyYAML the config is reported unreadable, never a crash, and the env still works.
+mkdir -p "$tmp/noyaml" && echo 'raise ImportError("stub")' > "$tmp/noyaml/yaml.py"
+check "no PyYAML" "$(cd "$tmp/myproj" && PYTHONPATH="$tmp/noyaml" WORKLOG_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"])')" \
+  "E None config unreadable: PyYAML is not installed"
 
 # Invariant: the resolver hardcodes no world name.
 if grep -nE "(STX|Inkitt|Kole)" "$ROOT/scripts/resolve_context.py"; then

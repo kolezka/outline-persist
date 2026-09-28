@@ -30,11 +30,11 @@ python3 -c "import json;h=json.load(open('$ROOT/hooks/hooks.json'));assert h['ho
   || fail "hooks.json missing wrapped SessionStart"
 note "ok: hooks wrapped"
 
-# 5. All 7 verbs exist as commands.
-for c in load start checkpoint handoff complete dry-run off; do
+# 5. All 8 verbs exist as commands.
+for c in load start checkpoint handoff complete dry-run off setup; do
   [ -f "$ROOT/commands/$c.md" ] || fail "missing command: $c"
 done
-note "ok: all 7 verb commands present"
+note "ok: all 8 verb commands present"
 
 # 6. The skill names both MCP tool prefixes and pins neither one. A plugin-only
 # install exposes mcp__plugin_worklog-persist_outline__*, never mcp__outline__*.

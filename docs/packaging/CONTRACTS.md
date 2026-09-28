@@ -1,7 +1,7 @@
 ---
 block: packaging
 doc: CONTRACTS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -68,12 +68,12 @@ enforcement: `` `tests/test_install.sh::"foreign marketplace ignored"` ``.
 `` `install.sh::check_structure()` `` is a standalone Python check
 (`--check`, or `make check`) that validates: `plugin.json` name, `marketplace.json`
 membership, `hooks/hooks.json` wraps `SessionStart` under a top-level `hooks`
-key, `.mcp.json` defines exactly the server list `["outline"]`, the seven
+key, `.mcp.json` defines exactly the server list `["outline"]`, the eight
 command files `load`, `start`, `checkpoint`, `handoff`, `complete`, `dry-run`,
-`off` exist under `commands/`, `skills/worklog-persist/SKILL.md` exists, and
-`scripts/session-start.sh`, `scripts/resolve-context.sh`,
-`scripts/resolve_context.py`, `scripts/persistence-state.sh`, `scripts/redact.py`
-all exist [verified]. It is
+`off`, `setup` exist under `commands/`, `skills/worklog-persist/SKILL.md` exists,
+and `scripts/session-start.sh`, `scripts/resolve-context.sh`,
+`scripts/resolve_context.py`, `scripts/config-add.sh`, `scripts/config_add.py`,
+`scripts/persistence-state.sh`, `scripts/redact.py` all exist [verified]. It is
 never invoked automatically by `` `install.sh::do_install()` ``; a plain
 `--apply` does not run it [verified].
 

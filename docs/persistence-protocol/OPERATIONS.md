@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: OPERATIONS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -14,7 +14,7 @@ versus the one it only calls, and known stuck states.
 
 ## Entry points
 
-Seven slash commands, each a thin pointer into
+Eight slash commands, each a thin pointer into
 `skills/worklog-persist/SKILL.md::"This skill is the operational contract"`
 [verified]:
 
@@ -27,6 +27,7 @@ Seven slash commands, each a thin pointer into
 | `/complete` | `commands/complete.md::"Record the real completion result of a work item in Outline."` | Yes, update only |
 | `/dry-run` | `commands/dry-run.md::"Show the intended Outline read or write without changing anything."` | No, `commands/dry-run.md::"Output the plan only. Make no mutation to Outline."` [verified] |
 | `/off` | `commands/off.md::"Disable automatic Outline persistence without removing the plugin."` | No Outline write; toggles a local switch, see below |
+| `/setup` | `commands/setup.md::"Route this repo to an Outline world, or mark it as not persisted."` | Writes the config through `config-add.sh`; bootstraps Outline folders when connected |
 
 All descriptions above are the command's own front-matter `description:` field,
 read verbatim [verified].
@@ -76,8 +77,13 @@ but calls no write tool
   rejected (`scripts/resolve_context.py::load_config()`) [verified]. While the
   world is `UNRESOLVED`, `kb_path` is `None`, so no path is built from the
   sentinel [verified]. Recovery: declare the repo in the config, or set
-  `WORKLOG_WORLD`, or answer the "ask the operator once" prompt
-  (`skills/worklog-persist/SKILL.md::"ask the operator once"`) [verified].
+  `WORKLOG_WORLD`, or run `/setup`
+  (`commands/setup.md::"Onboarding"`) [verified].
+- **`config-add.sh` refuses.** Exit `1` means nothing was written. The message
+  names the cause: an existing different declaration, an ignore conflict, a file
+  it cannot parse, or no PyYAML (`scripts/config_add.py::Refused`) [verified].
+  Recovery: the operator fixes the file or picks another answer; never edit
+  around the refusal by hand.
 - **Invalid task slug.** The script exits `2` rather than guessing a
   normalization
   (`scripts/resolve_context.py::"invalid task slug"`) [verified]. Recovery:

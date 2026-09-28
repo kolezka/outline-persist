@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: CONTRACTS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -16,16 +16,16 @@ format.
 ## The skill is the single operational contract
 
 `skills/worklog-persist/SKILL.md::"This skill is the operational contract"`
-[verified]. The seven command files exist and each names its verb: `load`,
-`start`, `checkpoint`, `handoff`, `complete`, `dry-run`, `off`
+[verified]. The eight command files exist and each names its verb: `load`,
+`start`, `checkpoint`, `handoff`, `complete`, `dry-run`, `off`, `setup`
 [verified]. Each command body says "Run the worklog-persist skill's" plus its own
 step, for instance `commands/handoff.md::"Run the worklog-persist skill's"`
 [verified], rather than restating the lifecycle rules, so a rule only needs to
 change in `skills/worklog-persist/SKILL.md` once [inferred: one canonical file,
-seven one-line pointers].
+eight short pointers].
 
-enforcement: `tests/test_structure.sh::"all 7 verb commands present"` checks
-only that the seven files exist, not that their bodies still defer to the
+enforcement: `tests/test_structure.sh::"all 8 verb commands present"` checks
+only that the eight files exist, not that their bodies still defer to the
 skill (test suite only).
 
 ---
@@ -48,7 +48,7 @@ never assumes one, one sentence and a link per
 discovery by keyword, not by hardcoding either string:
 `skills/worklog-persist/SKILL.md::"Find them with ToolSearch"` and
 `skills/worklog-persist/SKILL.md::"Never assume"` [verified]. None of
-the seven `commands/*.md` files contains the literal string `mcp__`, so they
+the eight `commands/*.md` files contains the literal string `mcp__`, so they
 cannot hardcode the wrong one; they name only the tool verbs and defer prefix
 discovery to the skill [verified].
 
@@ -72,7 +72,7 @@ Invoked as `skills/worklog-persist/SKILL.md::"bash ${CLAUDE_PLUGIN_ROOT}/scripts
 these keys: `repo`, `repo_root`, `project`, `world`, `world_source`,
 `candidate_worlds`, `ignored`, `branch`, `worktree`, `task_slug`,
 `root_collection`, `global_collection`, `archive_collection`, `kb_path`,
-`tasks_path`, `record_path`, `config`, `config_error` [verified].
+`tasks_path`, `record_path`, `config`, `config_path`, `config_error` [verified].
 
 - `repo_root` is the main checkout, also from a linked worktree
   (`scripts/resolve_context.py::canonical_repo()`) [verified].
@@ -88,7 +88,8 @@ these keys: `repo`, `repo_root`, `project`, `world`, `world_source`,
 - `kb_path` is the config `kb_folder` when set, else
   `<root_collection>/<world>/<project>`, and `None` while the world is
   `UNRESOLVED` [verified]. `tasks_path` and `record_path` hang off it.
-- `config` is the path that was read, or `None`; `config_error` says why no
+- `config` is the path that was read, or `None`; `config_path` is where the
+  config is looked for, also when it does not exist; `config_error` says why no
   config was used (`not found`, `unreadable`, `malformed`), or is `None`
   (`scripts/resolve_context.py::load_config()`) [verified].
 - `task_slug`, when given, must match `scripts/resolve_context.py::SLUG_RE`
@@ -108,27 +109,88 @@ enforcement: `tests/test_context.sh::"WORKLOG_WORLD honored"`,
 
 ## Plugin config file
 
-The resolver reads one TOML file: `$WORKLOG_CONFIG`, else
-`~/.config/worklog-persist/config.toml`
-(`scripts/resolve_context.py::config_path()`) [verified]. It is parsed with the
-standard library `tomllib` (`scripts/resolve_context.py::"import tomllib"`), so
-the plugin has no third-party runtime dependency [verified]. The shape it reads:
+The resolver reads one YAML file: `$WORKLOG_CONFIG`, else
+`~/.config/worklog-persist/config.yaml`
+(`scripts/resolve_context.py::config_path()`) [verified]. It is parsed with
+PyYAML's `safe_load`; without PyYAML the resolver reports
+`scripts/resolve_context.py::"PyYAML is not installed"` in `config_error` and
+does not crash [verified]. The shape it reads:
 
-- `[outline]` with `root_collection`, `global_collection`, `archive_collection`.
+- `outline:` with `root_collection`, `global_collection`, `archive_collection`.
   A missing key keeps `scripts/resolve_context.py::DEFAULT_OUTLINE` [verified].
-- `[[worlds]]` with `name`, each holding `[[worlds.projects]]` with `name`,
-  `repo` and an optional `kb_folder`. `repo` is matched after `~` expansion and
-  symlink resolution (`scripts/resolve_context.py::expand()`) [verified].
-- top-level `ignore = [...]`: a repo equal to or below one of these dirs is
-  `ignored` [verified].
+- `worlds:`, a list of `{name, projects}`, where `projects` is a list of
+  `{name, repo, kb_folder?}`. `repo` is matched after `~` expansion and symlink
+  resolution (`scripts/resolve_context.py::expand()`) [verified].
+- `ignore:`, a list of dirs: a repo equal to or below one of them is `ignored`
+  [verified].
 
 Any other key is ignored. A file with the wrong shape is rejected whole by
 `scripts/resolve_context.py::shape_error()` and reported in `config_error`, never
 raised [verified].
 
 enforcement: `tests/test_context.sh::"malformed config"`,
-`tests/test_context.sh::"unparseable config"` and
-`tests/test_context.sh::"missing config reported"` (test suite only).
+`tests/test_context.sh::"unparseable config"`,
+`tests/test_context.sh::"missing config reported"`,
+`tests/test_context.sh::"default config path"` and
+`tests/test_context.sh::"no PyYAML"` (test suite only).
+
+---
+
+## Config writer: `scripts/config-add.sh`
+
+The only sanctioned writer of the config. A thin wrapper
+(`scripts/config-add.sh::"Thin wrapper"`) around `scripts/config_add.py::main()`,
+which writes the same file the resolver reads (it imports
+`scripts/resolve_context.py::config_path()`) [verified]. Two subcommands:
+
+- `project --world W --name N --repo PATH [--kb-folder F]` declares a repo
+  (`scripts/config_add.py::add_project()`) [verified];
+- `ignore --repo PATH` marks a repo as having no Outline folder
+  (`scripts/config_add.py::add_ignore()`) [verified].
+
+Behaviour [verified, from the code and `tests/test_config_add.sh`]:
+
+- A missing file and its parent dirs are created. Existing entries and keys are
+  kept; YAML comments are not.
+- `repo` is stored as the resolved absolute path.
+- The same entry again is a no-op: exit `0`, `no change` on stdout, file
+  untouched.
+- A repo already declared differently (another world, name or `kb_folder`), a
+  declared repo passed to `ignore`, or an ignored repo passed to `project`:
+  exit `1`, nothing written.
+- A file that does not parse or fails `scripts/resolve_context.py::shape_error()`:
+  exit `1`, file left byte-identical.
+- No PyYAML: exit `1`, nothing written.
+- A world or project name that is empty or holds `/`, or a `--repo` that is not
+  a directory: exit `2`, nothing written.
+- Writes go to a temp file in the same dir, then `os.replace`
+  (`scripts/config_add.py::write()`).
+
+enforcement: `tests/test_config_add.sh` (every bullet above except the mode
+copy and `fsync`, test suite only). The rule that an agent uses this script and
+never edits the YAML by hand is prompt text only
+(`skills/worklog-persist/SKILL.md::"never by editing the YAML"`): convention.
+
+---
+
+## Onboarding an unresolved repo
+
+When the resolver gives `UNRESOLVED`, not `ignored`, and `config_error` is empty
+or `config not found`, the skill runs its onboarding flow
+(`skills/worklog-persist/SKILL.md::"## Onboarding (unresolved repo)"`)
+[verified]. `/setup` runs the same flow (`commands/setup.md::"Onboarding"`)
+[verified]. The flow: list the top-level documents under `root_collection` as
+the worlds, never hardcoded or cached; ask one question (a world, a new world,
+or do not persist, plus the project name); record the answer with
+`config-add.sh`; bootstrap a new world with `INDEX` only and then the project
+folder; re-run the resolver and confirm `kb_path` [verified]. Without Outline it
+offers only a typed world or "Skip for this session" and writes nothing to
+Outline [verified].
+
+enforcement: convention. The flow is prompt text; no test drives it. The hook
+side that asks for it is tested in
+[`../session-hook/CONTRACTS.md`](../session-hook/CONTRACTS.md), and the writer
+in `tests/test_config_add.sh`.
 
 ---
 

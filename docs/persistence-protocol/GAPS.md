@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: GAPS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -33,26 +33,44 @@ a whole does and does not cover.
 
 ## No migration from the 0.2 manifest
 
-The resolver does not look for the old YAML manifest or read the old world env
-var, by design (see [`DECISIONS.md`](DECISIONS.md#its-own-config-not-a-shared-manifest)).
-An operator who upgrades without writing the TOML file gets `UNRESOLVED` for
-every repo, with `config_error` set to `config not found: ...` [verified]. The
-SessionStart hook passes that cause on, so the agent asks, but nothing converts
-the old file for them [inferred: no code in this repo reads YAML any more].
+The resolver does not look for the old manifest or read the old world env var,
+by design (see [`DECISIONS.md`](DECISIONS.md#its-own-config-not-a-shared-manifest)).
+An operator who upgrades gets `UNRESOLVED` for every repo, with `config_error`
+set to `config not found: ...`, and the hook asks for onboarding [verified].
+Nothing copies the old entries across; the schema is the same, so a manual copy
+works [inferred].
 
 ## A config with one bad entry is dropped whole
 
 `scripts/resolve_context.py::shape_error()` rejects the whole file when any one
 part has the wrong shape, for example one `projects` value that is not an array
-of tables [verified]. Every repo then resolves as if no config existed. The
+of mappings [verified]. Every repo then resolves as if no config existed. The
 cause is in `config_error`, but a single typo still turns off routing for all
 worlds [inferred from `load_config()` returning `None` on any shape error].
 
-## The old-Python branch is untested
+## Nothing installs PyYAML
 
-`scripts/resolve_context.py::load_config()` reports `tomllib needs Python 3.11 or newer`
-when `import tomllib` fails. No test runs it under an older interpreter
-[verified].
+The scripts run under whatever `python3` is on `PATH`, not the `uv` test
+environment, and `pyproject.toml` lists only the test runner [verified]. A
+machine without PyYAML resolves every repo as `UNRESOLVED` with
+`config_error` = `config unreadable: PyYAML is not installed`, and the hook
+says to fix that before onboarding [verified].
+
+## The config writer has limits
+
+`scripts/config_add.py::write()` rewrites the whole file, so YAML comments and
+formatting are lost on the first write [verified]. Two writers at once are not
+locked against each other; the last `os.replace` wins [inferred: no lock in the
+code]. Nothing stops an agent from editing the YAML by hand instead of using the
+script; that rule is prompt text only [verified].
+
+## Onboarding is prompt text
+
+The discovery, the question and the bootstrap in
+`skills/worklog-persist/SKILL.md::"## Onboarding (unresolved repo)"` are not
+run by any test [verified]. A session could skip the question, pass a worktree
+path instead of `repo_root`, or treat a non-world top-level document under
+`root_collection` as a world [inferred].
 
 ## Redaction coverage is a fixed rule list, not a guarantee
 
@@ -67,7 +85,7 @@ remembering to run it, per the "whole protocol is prompt text" gap above.
 
 ## Commands do not repeat the ToolSearch discovery step
 
-None of the seven `commands/*.md` files mentions `ToolSearch` or the dual-
+None of the eight `commands/*.md` files mentions `ToolSearch` or the dual-
 prefix rule; they call the tool verbs directly (`list_collections`,
 `create_document`, and so on) and rely on the invoking session having already
 loaded `skills/worklog-persist/SKILL.md::"Find them with ToolSearch"` [verified]
@@ -82,7 +100,7 @@ command body does].
 
 `tests/test_context.sh` and `tests/test_redact.py` cover
 `scripts/resolve-context.sh` and `scripts/redact.py` in isolation, and
-`tests/test_structure.sh::"all 7 verb commands present"` [verified] only checks
+`tests/test_structure.sh::"all 8 verb commands present"` [verified] only checks
 file existence. None of them, nor anything else found at this pin, drives a
 `list_documents` / `create_document` / `update_document` sequence to prove the
 "match on project + task slug, update instead of duplicate" rule actually holds

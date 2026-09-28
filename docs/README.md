@@ -1,7 +1,7 @@
 ---
 block: _root
 doc: README
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 unassigned: [README.md, AGENTS.md, .claude/, .ai/, .gitkeep, docs/]
 ---
@@ -17,7 +17,7 @@ Read [`CONVENTIONS.md`](CONVENTIONS.md) before you write here.
 ## What this plugin is
 
 A Claude Code plugin that keeps the state of active work in Outline, so the next
-session can continue it. It has three moving parts: a skill and seven slash
+session can continue it. It has three moving parts: a skill and eight slash
 commands that tell the agent what to read and write, a SessionStart hook that
 reminds the agent of the rule, and an installer that registers the plugin with
 the `claude` CLI.
@@ -45,7 +45,7 @@ flowchart LR
 |---|---|
 | [`packaging/`](packaging/) | Plugin and marketplace manifests, the MCP server entry, the installer, the `Makefile` |
 | [`session-hook/`](session-hook/) | The SessionStart hook and the off switch that gates it |
-| [`persistence-protocol/`](persistence-protocol/) | The skill, the seven commands, identity resolution and secret redaction |
+| [`persistence-protocol/`](persistence-protocol/) | The skill, the eight commands, identity resolution, the config writer and secret redaction |
 | [`verification/`](verification/) | The test suites, what each one proves, and what nothing proves |
 
 ---

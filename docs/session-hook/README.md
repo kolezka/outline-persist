@@ -1,7 +1,7 @@
 ---
 block: session-hook
 doc: README
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 owns: [hooks/, scripts/session-start.sh, scripts/persistence-state.sh]
 depends_on: [packaging, persistence-protocol]
@@ -34,7 +34,7 @@ warns against relying on one prefix, spelling out the plugin-scoped alternative
 
 This block does not own:
 
-- the skill or the seven slash commands, including `/off`, which only wraps the
+- the skill or the eight slash commands, including `/off`, which only wraps the
   script this block owns (`persistence-protocol`, one sentence and a link, per
   `../CONVENTIONS.md`)
 - the plugin manifest, the marketplace entry, `.mcp.json`, or `install.sh`,

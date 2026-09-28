@@ -1,7 +1,7 @@
 ---
 block: session-hook
 doc: CONTRACTS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -73,16 +73,31 @@ sentence `[verified]`:
 - for an ignored repo: that it has no Outline folder
   (`scripts/session-start.sh::"in the worklog-persist config"`);
 - otherwise: that the world is unresolved, with the resolver's `config_error`
-  as the cause, or a default cause naming `WORKLOG_WORLD`
-  (`scripts/session-start.sh::"config_error"`).
+  as the cause (or a default cause naming `WORKLOG_WORLD`) and its
+  `config_path` (`scripts/session-start.sh::"config_error"`). Then one of two
+  instructions:
+  - config missing, or repo not declared: run the onboarding flow before any
+    other work (`scripts/session-start.sh::"run the onboarding flow"`), which the
+    skill owns (see
+    [`../persistence-protocol/CONTRACTS.md`](../persistence-protocol/CONTRACTS.md#onboarding-an-unresolved-repo));
+  - config present but unreadable or malformed: fix it first and do not run
+    `/setup` (`scripts/session-start.sh::"Fix the config file"`).
+
+The base reminder text before this sentence is fixed; only the appended
+sentence varies `[verified]`.
 
 A resolver failure adds nothing and never fails the hook
 (`scripts/session-start.sh::"a resolver failure must never break session start"`)
 `[verified]`.
 
-enforcement: `tests/test_offswitch.sh::"hook names kb_path"` and
-  `tests/test_offswitch.sh::"hook states unresolved cause"` (test suite only).
-  The ignored-repo sentence has no hook-level test `[verified]`.
+enforcement: `tests/test_offswitch.sh::"hook names kb_path"`,
+  `tests/test_offswitch.sh::"hook states unresolved cause"`,
+  `tests/test_offswitch.sh::"onboarding when config missing"`,
+  `tests/test_offswitch.sh::"onboarding when repo not declared"`,
+  `tests/test_offswitch.sh::"no onboarding when resolved"`,
+  `tests/test_offswitch.sh::"no onboarding when ignored"`,
+  `tests/test_offswitch.sh::"no onboarding when config broken"` and
+  `tests/test_offswitch.sh::"base rule kept when onboarding"` (test suite only).
 
 ### The hook names the server, not a tool prefix
 

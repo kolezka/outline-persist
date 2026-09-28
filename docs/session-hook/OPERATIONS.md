@@ -1,7 +1,7 @@
 ---
 block: session-hook
 doc: OPERATIONS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -50,7 +50,7 @@ not the same layer:
    This is what the `/off` slash command wraps
    (`persistence-protocol`, one sentence and a link:
    [`../persistence-protocol/OPERATIONS.md`](../persistence-protocol/OPERATIONS.md)).
-   Only this hook's output is affected; the skill and all seven commands still
+   Only this hook's output is affected; the skill and all eight commands still
    run `[verified]`.
 3. **`./install.sh --apply --disable`**, which runs `claude plugin disable` on
    the whole plugin (`packaging`, see

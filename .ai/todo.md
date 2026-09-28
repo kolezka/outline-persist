@@ -87,8 +87,15 @@ Observed machine state: old `outline-persist@<marketplace>` plugin is still inst
 
 ## 2026-09-28: standalone
 
-- [x] Resolver reads the plugin's own TOML config (`$WORKLOG_CONFIG`, else `~/.config/worklog-persist/config.toml`) with stdlib `tomllib`. No YAML dependency.
+- [x] Resolver reads the plugin's own config (`$WORKLOG_CONFIG`, else a file under `~/.config/worklog-persist/`). First pass used TOML; see the follow-up below.
 - [x] World env var is now `WORKLOG_WORLD`. The old name and the old manifest are ignored, locked by the "old coupling ignored" cases in `tests/test_context.sh` (red on the 0.2 resolver, green now).
 - [x] JSON keys `manifest`/`manifest_error` became `config`/`config_error`; `world_source` says `config`. The offline mirror and its output key are gone.
 - [x] Hook, skill, commands, README and docs describe the plugin on its own. Dedupe-marker test and docs contract removed; the reminder text is unchanged.
 - [x] Plugin version 0.3.0.
+
+### Follow-up: YAML and onboarding
+
+- [x] Config is YAML again (`config.yaml`), needs PyYAML; missing PyYAML is reported in `config_error`, never a crash. New output key `config_path`.
+- [x] `scripts/config-add.sh` (+ `config_add.py`): `project` and `ignore` subcommands; creates the file, keeps entries, idempotent, refuses conflicts and unparseable files, atomic replace. `tests/test_config_add.sh` red then green.
+- [x] Hook: unresolved repo (config missing or repo not declared) gets an onboarding instruction with cause and config path; a broken config gets "fix it first". Base reminder unchanged. Hook cases red then green.
+- [x] Skill: Onboarding section (worlds read live from Outline, one question, write via the script, bootstrap, confirm). New `/setup` command; install.sh --check and test_structure now expect 8 commands.

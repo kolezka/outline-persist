@@ -38,9 +38,19 @@ elif i and i.get("ignored"):
     ctx += (f" Project `{i['project']}` is under `ignore` in the worklog-persist config:"
             " it has no Outline folder. Ask the operator before writing anything for it.")
 elif i:
-    cause = i.get("config_error") or "repo not declared in the worklog-persist config, no WORKLOG_WORLD"
-    ctx += (f" World for project `{i['project']}` is unresolved ({cause});"
-            " ask the operator once before writing.")
+    error = i.get("config_error")
+    cause = error or "repo not declared in the worklog-persist config, no WORKLOG_WORLD"
+    ctx += (f" World for project `{i['project']}` is unresolved"
+            f" ({cause}; config file `{i.get('config_path')}`).")
+    # A missing file or a missing entry is onboarding. A file that exists but
+    # cannot be used must be fixed first, or /setup would refuse to write it.
+    if not error or error.startswith("config not found"):
+        ctx += (" Before any other work, run the onboarding flow in the worklog-persist"
+                " skill (/setup): discover the worlds in Outline, ask the user one question,"
+                " and record the answer with scripts/config-add.sh, never by hand.")
+    else:
+        ctx += (" Fix the config file, or install what the cause names, before writing"
+                " anything to Outline. Do not run /setup until it resolves.")
 print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",

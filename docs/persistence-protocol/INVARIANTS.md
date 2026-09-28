@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: INVARIANTS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -103,3 +103,32 @@ identity. `tests/test_context.sh::"malformed config"` and
 Defect prevented: an env var set for one repo routing records for a repo the
 operator excluded on purpose. `tests/test_context.sh::"ignored beats WORKLOG_WORLD"`
 covers it (test suite only) [verified].
+
+### 12. The config writer never clobbers a file it cannot read
+
+`scripts/config_add.py::load()` raises before any write when the existing file
+does not parse or fails the shape check, and `main()` returns `1` without
+calling `write()` [verified]. Defect prevented: onboarding one repo silently
+replacing an operator's hand-kept config with a one-entry file.
+`tests/test_config_add.sh::"unparseable file refused"` and
+`tests/test_config_add.sh::"malformed file refused"` check the file stays
+byte-identical (test suite only) [verified].
+
+### 13. The config writer is idempotent and never moves a repo
+
+The same entry twice leaves the file untouched; a repo declared under another
+world is refused (`scripts/config_add.py::add_project()`) [verified]. Defect
+prevented: duplicate entries where the first match wins, or records for one
+project silently starting to land in another world's folder.
+`tests/test_config_add.sh::"idempotent re-add: byte-identical"` and
+`tests/test_config_add.sh::"conflict: file untouched"` cover it (test suite
+only) [verified].
+
+### 14. World names come from Outline or the user, never from the plugin
+
+Onboarding lists the top-level documents under `root_collection` each time and
+never caches them
+(`skills/worklog-persist/SKILL.md::"remember or cache world names"`)
+[verified]. Defect prevented: a stale or foreign list steering a repo into a
+world that does not exist for this operator. Convention only; no test drives
+the flow [verified].

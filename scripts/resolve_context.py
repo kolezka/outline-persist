@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Resolve the identity and Outline address of the current work item.
 
-Prints JSON. The KB structure comes from the plugin's own TOML config
-(`$WORKLOG_CONFIG`, else ~/.config/worklog-persist/config.toml): collections come
-from its `[outline]` table, and a repo declared under `[[worlds.projects]]` gets
+Prints JSON. The KB structure comes from the plugin's own YAML config
+(`$WORKLOG_CONFIG`, else ~/.config/worklog-persist/config.yaml): collections come
+from its `outline:` block, and a repo declared under `worlds[].projects[]` gets
 its world, project name and optional `kb_folder` from there. No world name is
-hardcoded.
+hardcoded. Only scripts/config_add.py writes that file.
 
 World precedence: config match, then $WORKLOG_WORLD, then "UNRESOLVED" (the
 caller asks the operator once). Usage: resolve_context.py [task-slug]
@@ -51,7 +51,7 @@ def canonical_repo(cwd):
 
 def config_path():
     return Path(os.environ.get("WORKLOG_CONFIG")
-                or Path.home() / ".config/worklog-persist/config.toml")
+                or Path.home() / ".config/worklog-persist/config.yaml")
 
 
 def load_config(path):
@@ -59,12 +59,12 @@ def load_config(path):
     if not path.is_file():
         return None, f"config not found: {path}"
     try:
-        import tomllib
+        import yaml
     except ImportError:
-        return None, "config unreadable: tomllib needs Python 3.11 or newer"
+        return None, "config unreadable: PyYAML is not installed"
     try:
-        with path.open("rb") as f:
-            data = tomllib.load(f)
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = {} if data is None else data
     except Exception as e:  # noqa: BLE001 - report, the caller decides
         return None, f"config unreadable: {e}"
     error = shape_error(data)
@@ -163,6 +163,7 @@ def main(argv):
         "tasks_path": f"{kb_path}/Tasks" if kb_path else None,
         "record_path": f"{kb_path}/Tasks/{slug}" if kb_path and slug else None,
         "config": str(cpath) if config else None,
+        "config_path": str(cpath),
         "config_error": config_error,
     }, ensure_ascii=False))
     return 0

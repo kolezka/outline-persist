@@ -11,9 +11,9 @@ engineering work lives in Outline so it survives across sessions: what task is i
 progress, what was verified, what changed, which decisions were made, what is
 blocked, and what the next action is.
 
-This skill is the operational contract. The seven slash commands
-(`/load`, `/start`, `/checkpoint`, `/handoff`, `/complete`, `/dry-run`, `/off`)
-are thin entry points that run the relevant part of this contract.
+This skill is the operational contract. The eight slash commands
+(`/load`, `/start`, `/checkpoint`, `/handoff`, `/complete`, `/dry-run`, `/off`,
+`/setup`) are thin entry points that run the relevant part of this contract.
 
 The Outline tools are `list_collections`, `list_documents`, `fetch`,
 `create_document`, `update_document` and `move_document`. Their prefix depends on
@@ -29,8 +29,8 @@ list_collections`), then load the schemas of the prefix that exists. Never assum
 one prefix.
 
 Helper scripts live under `${CLAUDE_PLUGIN_ROOT}/scripts/`:
-`resolve-context.sh` (identity), `redact.py` (secret redaction),
-`persistence-state.sh` (the off switch).
+`resolve-context.sh` (identity), `config-add.sh` (the only config writer),
+`redact.py` (secret redaction), `persistence-state.sh` (the off switch).
 
 ## Precondition: is Outline available?
 
@@ -61,18 +61,21 @@ JSON. Use its paths as given; never rebuild them by hand.
 | `world_source` | `config`, `env` (`$WORKLOG_WORLD`) or `fallback` |
 | `kb_path` | Project folder in Outline (`kb_folder` override, else `<root>/<World>/<project>`) |
 | `tasks_path`, `record_path` | `<kb_path>/Tasks` and `<kb_path>/Tasks/<slug>` |
-| `root_collection`, `global_collection`, `archive_collection` | From the config `[outline]` table |
+| `root_collection`, `global_collection`, `archive_collection` | From the config `outline:` block |
 | `repo_root`, `worktree`, `branch` | `repo_root` is the main checkout, also from a linked worktree |
 | `ignored` | The config lists this repo, or a parent dir, under `ignore` |
 | `config`, `config_error` | Which config was read, or why none was |
+| `config_path` | Where the config is looked for, also when it does not exist |
 
-The config is this plugin's own TOML file: `$WORKLOG_CONFIG`, else
-`~/.config/worklog-persist/config.toml`. Pointing `WORKLOG_CONFIG` at another
-file lets the same repo resolve differently per context. That is intended.
+The config is this plugin's own YAML file: `$WORKLOG_CONFIG`, else
+`~/.config/worklog-persist/config.yaml`. Reading it needs PyYAML. Pointing
+`WORKLOG_CONFIG` at another file lets the same repo resolve differently per
+context. That is intended. Never edit the file by hand: add entries only with
+`config-add.sh` (see Onboarding).
 
 - **World** is never hardcoded. Precedence: config match, then `$WORKLOG_WORLD`, then
-  `UNRESOLVED`. On `UNRESOLVED`, ask the operator once (offer `candidate_worlds`),
-  then proceed. Do not write anything until the world is known.
+  `UNRESOLVED`. On `UNRESOLVED`, run Onboarding (below) before any other work. Do
+  not write anything to Outline until the world is known.
 - **Project** is the config `name` when declared (it can differ from the repo
   name), else the basename of `git remote get-url origin`, else the main checkout
   directory name. A worktree directory name is never the project.
@@ -111,7 +114,7 @@ Names in angle brackets come from the resolver.
 
 Run before the first write in a session, never before a read-only load.
 
-1. Resolve identity. Stop on `UNRESOLVED` world or `ignored` repo (see above).
+1. Resolve identity. On `UNRESOLVED` run Onboarding; on an `ignored` repo stop.
 2. Resolve each segment of `kb_path` with `list_documents`. Create only what is
    missing, and check each child before you create it. This repairs a partial
    folder and never duplicates.
@@ -120,6 +123,43 @@ Run before the first write in a session, never before a read-only load.
    `Specs`/`Plans`/`Tasks` at world level. Running bootstrap twice creates nothing
    new.
 4. A folder that has no `INDEX` is a hub gap. Report it, do not skip it silently.
+
+## Onboarding (unresolved repo)
+
+Run this when the resolver reports `world` = `UNRESOLVED` and `ignored` = false,
+and `config_error` is empty or starts with `config not found`. The SessionStart
+hook asks for it, and `/setup` runs it. If `config_error` says the file is
+unreadable or malformed, do not onboard: report the error and `config_path`, and
+ask the operator to fix the file.
+
+1. **Discover worlds.** Run the availability check. If Outline is connected,
+   `list_documents` directly under `root_collection` (top level only). Each
+   top-level document title there is a world. Read them live every time: never
+   hardcode, remember or cache world names.
+2. **Ask one question.** Offer: each discovered world, "New world" (the user types
+   the name), and "Do not persist this repo". In the same question, confirm the
+   project name; the default is the resolver's `project`.
+3. **Record the answer** with the script, never by editing the YAML:
+   - world picked or typed:
+     `bash ${CLAUDE_PLUGIN_ROOT}/scripts/config-add.sh project --world <World> --name <project> --repo <repo_root>`
+   - do not persist:
+     `bash ${CLAUDE_PLUGIN_ROOT}/scripts/config-add.sh ignore --repo <repo_root>`
+
+   Always pass `repo_root`, not the worktree path. A non-zero exit means nothing
+   was written: show its message and stop. It refuses a repo already declared
+   under another world, and a config file it cannot parse.
+4. **Bootstrap.** For a new world, create the world folder under
+   `root_collection` with `INDEX` only. Then bootstrap the project folder
+   (`INDEX`, `Specs`, `Plans`, `Tasks`) as in Bootstrap above. Skip this for
+   "do not persist".
+5. **Confirm.** Re-run `resolve-context.sh`. It must now show `world_source` =
+   `config` and a `kb_path`, or `ignored` = true. Report the result in one line.
+
+If Outline is not connected: say world discovery is unavailable, and offer only
+"New world" (typed name) or "Skip for this session". A typed world may still be
+recorded with `config-add.sh`, but write nothing to Outline; bootstrap happens on
+the first write once Outline is back. "Skip for this session" writes nothing
+anywhere, and the session works without persistence.
 
 ## The persisted work record
 
@@ -178,6 +218,7 @@ change updates that flag. If the parent is missing, report the record as orphane
   fields, the redacted body) without calling any write tool.
 - **off** — `bash ${CLAUDE_PLUGIN_ROOT}/scripts/persistence-state.sh off` disables the
   automatic SessionStart rule without removing the plugin; `... on` re-enables.
+- **setup** — run Onboarding (above) for the current repo.
 
 ## When to write vs. not
 

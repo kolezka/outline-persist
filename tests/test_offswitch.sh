@@ -30,6 +30,25 @@ has_cause="$(cd "$repo" && WORKLOG_CONFIG=/nonexistent WORKLOG_WORLD='' bash "$R
   | python3 -c "import sys,json;print('config not found: /nonexistent' in json.load(sys.stdin)['hookSpecificOutput']['additionalContext'])")"
 check "hook states unresolved cause" "$has_cause" "True"
 
+# Onboarding: the hook tells the agent to run the setup flow only when the repo
+# can be routed by a config entry and is not. Prints: onboarding? cause? path?
+ctx() { python3 -c "import sys,json;c=json.load(sys.stdin)['hookSpecificOutput']['additionalContext'];print('onboarding' in c, sys.argv[1] in c, sys.argv[2] in c)" "$1" "$2"; }
+hook() { (cd "$repo" && WORKLOG_WORLD="${2:-}" WORKLOG_CONFIG="$1" bash "$ROOT/scripts/session-start.sh"); }
+check "onboarding when config missing" "$(hook /nonexistent | ctx 'config not found' 'config file `/nonexistent`')" "True True True"
+declared="$XDG_STATE_HOME/declared.yaml"
+printf 'worlds:\n  - name: Alpha\n    projects: [{name: elsewhere, repo: /nowhere}]\n' > "$declared"
+check "onboarding when repo not declared" "$(hook "$declared" | ctx 'repo not declared' "config file \`$declared\`")" "True True True"
+check "no onboarding when resolved" "$(hook "$declared" W | ctx 'Resolved for this repo' '@@none@@')" "False True False"
+ignored="$XDG_STATE_HOME/ignored.yaml"
+printf 'ignore:\n  - %s\n' "$repo" > "$ignored"
+check "no onboarding when ignored" "$(hook "$ignored" | ctx 'no Outline folder' '@@none@@')" "False True False"
+# A config that exists but cannot be used is a fix-the-file problem, not onboarding.
+broken="$XDG_STATE_HOME/broken.yaml"
+printf 'worlds: 3\n' > "$broken"
+check "no onboarding when config broken" "$(hook "$broken" | ctx 'config malformed' 'Fix the config file')" "False True True"
+# The base reminder text is unchanged in every case.
+check "base rule kept when onboarding" "$(hook /nonexistent | ctx 'Outline (MCP server `outline`) is this session' '@@none@@')" "True True False"
+
 bash "$ROOT/scripts/persistence-state.sh" off >/dev/null
 check "toggled off" "$(bash "$ROOT/scripts/persistence-state.sh" status)" "off"
 check "hook silent when off" "$(bash "$ROOT/scripts/session-start.sh" | wc -c | tr -d ' ')" "0"

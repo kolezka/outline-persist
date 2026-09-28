@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Add one entry to the worklog-persist config. The only sanctioned writer.
+
+Usage:
+  config_add.py project --world W --name N --repo PATH [--kb-folder F]
+  config_add.py ignore --repo PATH
+
+The file is the one resolve_context.py reads ($WORKLOG_CONFIG, else the default
+under ~/.config). It is created with its parent dir when missing. Existing
+entries are kept. The same entry twice is a no-op that leaves the file
+untouched. A repo already declared differently is an error, never a silent
+move. A file that cannot be parsed, or has the wrong shape, is never rewritten.
+Writes go to a temp file in the same dir, then replace the config in one step.
+
+Exit codes: 0 written or no change, 1 refused, 2 bad arguments.
+"""
+import argparse
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from resolve_context import config_path, expand, shape_error  # noqa: E402
+
+
+class Refused(Exception):
+    pass
+
+
+def load(path, yaml):
+    if not path.exists():
+        return {}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001 - reported, file left alone
+        raise Refused(f"cannot parse {path}, left unchanged: {e}") from e
+    data = {} if data is None else data
+    error = shape_error(data)
+    if error:
+        raise Refused(f"{path} is malformed ({error}), left unchanged")
+    return data
+
+
+def write(path, data, yaml):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True, default_flow_style=False)
+            f.flush()
+            os.fsync(f.fileno())
+        if path.exists():
+            os.chmod(tmp, path.stat().st_mode & 0o777)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def declared(data):
+    """Yield (world name, project dict, resolved repo path) for every project."""
+    for w in data.get("worlds") or []:
+        for p in w.get("projects") or []:
+            yield w.get("name"), p, expand(p.get("repo") or "")
+
+
+def ignored_by(data, repo):
+    for entry in data.get("ignore") or []:
+        i = expand(entry)
+        if i and (i == repo or i in repo.parents):
+            return entry
+    return None
+
+
+def add_project(data, world, name, repo, kb_folder):
+    for w, p, r in declared(data):
+        if r == repo:
+            if w == world and p.get("name") == name and p.get("kb_folder") == kb_folder:
+                return None
+            raise Refused(f"{repo} is already declared as world {w!r}, project "
+                          f"{p.get('name')!r}; ask the operator, nothing changed")
+    entry = ignored_by(data, repo)
+    if entry:
+        raise Refused(f"{repo} is ignored (by {entry!r}); ask the operator, nothing changed")
+    project = {"name": name, "repo": str(repo)}
+    if kb_folder:
+        project["kb_folder"] = kb_folder
+    if data.get("worlds") is None:
+        data["worlds"] = []
+    for w in data["worlds"]:
+        if w.get("name") == world:
+            if w.get("projects") is None:
+                w["projects"] = []
+            w["projects"].append(project)
+            break
+    else:
+        data["worlds"].append({"name": world, "projects": [project]})
+    return f"added project {name!r} to world {world!r} for {repo}"
+
+
+def add_ignore(data, repo):
+    if ignored_by(data, repo):
+        return None
+    for w, p, r in declared(data):
+        if r and (r == repo or repo in r.parents):
+            raise Refused(f"{r} is declared as world {w!r}, project {p.get('name')!r}; "
+                          "ask the operator, nothing changed")
+    if data.get("ignore") is None:
+        data["ignore"] = []
+    data["ignore"].append(str(repo))
+    return f"added {repo} to ignore"
+
+
+def segment(value):
+    value = value.strip()
+    if not value or "/" in value:
+        raise argparse.ArgumentTypeError("must be non-empty and contain no '/'")
+    return value
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="config-add", description=__doc__.splitlines()[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    pp = sub.add_parser("project", help="declare a repo under a world")
+    pp.add_argument("--world", required=True, type=segment)
+    pp.add_argument("--name", required=True, type=segment)
+    pp.add_argument("--repo", required=True)
+    pp.add_argument("--kb-folder")
+    ip = sub.add_parser("ignore", help="mark a repo as having no Outline folder")
+    ip.add_argument("--repo", required=True)
+    args = ap.parse_args(argv[1:])
+
+    repo = expand(args.repo)
+    if not repo or not repo.is_dir():
+        print(f"config-add: repo is not a directory: {args.repo}", file=sys.stderr)
+        return 2
+    try:
+        import yaml
+    except ImportError:
+        print("config-add: PyYAML is not installed; nothing written", file=sys.stderr)
+        return 1
+
+    path = config_path()
+    try:
+        data = load(path, yaml)
+        if args.cmd == "project":
+            message = add_project(data, args.world, args.name, repo, args.kb_folder)
+        else:
+            message = add_ignore(data, repo)
+    except Refused as e:
+        print(f"config-add: {e}", file=sys.stderr)
+        return 1
+    if message is None:
+        print(f"config-add: no change, {path} already has this entry")
+        return 0
+    write(path, data, yaml)
+    print(f"config-add: {message} in {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

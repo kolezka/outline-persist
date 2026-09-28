@@ -1,7 +1,7 @@
 ---
 block: verification
 doc: INVARIANTS
-verified_against: 487ab42
+verified_against: 317659f
 verified_on: 2026-09-28
 ---
 
@@ -80,3 +80,15 @@ under.
    root rather than a single block folder. [verified] Defect prevented: this
    block's own docs passing review while another block's front matter, ownership
    claim or citation is silently broken.
+
+10. **The config-writer suite never touches the real config.**
+   `tests/test_config_add.sh` exports `WORKLOG_CONFIG` inside its own
+   `mktemp -d` directory before the first write, and every other case passes a
+   scratch path too. [verified] Defect prevented: a test run adding fake worlds
+   to the developer's real config.
+
+11. **A refusal is checked by file content, not only by exit code.**
+   `tests/test_config_add.sh::sum()` hashes the file before and after each
+   refused or repeated write. [verified] Defect prevented: a writer that exits
+   non-zero but has already truncated or rewritten the file, which an exit-code
+   check alone would pass.
