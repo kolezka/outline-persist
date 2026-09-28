@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: OPERATIONS
-verified_against: 44e1f73
+verified_against: d56da34
 verified_on: 2026-09-28
 ---
 
