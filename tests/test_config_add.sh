@@ -9,6 +9,7 @@ RESOLVE="$ROOT/scripts/resolve-context.sh"
 fails=0
 check() { if [ "$2" != "$3" ]; then echo "FAIL: $1 (want '$3', got '$2')"; fails=$((fails+1)); else echo "ok: $1"; fi; }
 sum() { if [ -f "$1" ]; then shasum "$1" | cut -d' ' -f1; else echo absent; fi; }
+repos() { [ -f "$1" ] || { echo absent; return; }; python3 -c 'import sys,yaml;print(" ".join(p["repo"] for w in yaml.safe_load(open(sys.argv[1]))["worlds"] for p in w["projects"]))' "$1"; }
 ident() { python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["project"],d["kb_path"],d["ignored"])'; }
 
 tmp="$(mktemp -d)"
@@ -104,5 +105,16 @@ check "worktree: resolves from main" "$(cd "$tmp/one" && WORKLOG_CONFIG="$wcfg" 
 before="$(sum "$wcfg")"
 rc=0; out="$(WORKLOG_CONFIG="$wcfg" bash "$ADD" project --world Alpha --name proj-one --repo "$tmp/one")" || rc=$?
 check "worktree then main: same repo, no change" "$rc $(sum "$wcfg") $(grep -c 'no change' <<<"$out")" "0 $before 1"
+
+# 13. A path typed in another case (case-insensitive disk) is stored in the on-disk case.
+mkdir -p "$tmp/MyRepo" && git -C "$tmp/MyRepo" init -q
+if [ -d "$tmp/myrepo" ]; then
+  ccfg="$tmp/case.yaml"
+  rc=0; err="$(WORKLOG_CONFIG="$ccfg" bash "$ADD" project --world Alpha --name my --repo "$tmp/myrepo" 2>&1 >/dev/null)" || rc=$?
+  check "case mismatch: exit 0, no traceback" "$rc $(grep -c Traceback <<<"$err" || true)" "0 0"
+  check "case mismatch: stored in on-disk case" "$(repos "$ccfg")" "$(cd "$tmp/MyRepo" && pwd -P)"
+else
+  echo "skip: case mismatch (case-sensitive filesystem)"
+fi
 
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }

@@ -122,7 +122,11 @@ def main_checkout(repo):
     top, main = canonical_repo(repo)
     if top is None:
         return repo
-    return main / repo.relative_to(top.resolve())
+    # samefile, not string compare: a case-insensitive disk accepts a path typed in another case.
+    for ancestor in (repo, *repo.parents):
+        if os.path.samefile(ancestor, top):
+            return main / repo.relative_to(ancestor)
+    raise Refused(f"cannot relate {repo} to its git top level {top}, nothing written")
 
 
 def segment(value):
@@ -148,7 +152,11 @@ def main(argv):
     if not repo or not repo.is_dir():
         print(f"config-add: repo is not a directory: {args.repo}", file=sys.stderr)
         return 2
-    repo = main_checkout(repo)
+    try:
+        repo = main_checkout(repo)
+    except Refused as e:
+        print(f"config-add: {e}", file=sys.stderr)
+        return 2
     try:
         import yaml
     except ImportError:
