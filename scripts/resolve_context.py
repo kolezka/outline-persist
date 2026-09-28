@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Resolve the identity and Outline address of the current work item.
 
-Prints JSON. The KB structure follows the dotfiles-next `kb` manifest
-(`$KB_MANIFEST`, else ~/.config/kb/worlds.yaml): collections come from its
-`outline:` block, and a repo declared under `worlds[].projects[]` gets its world,
-project name and optional `kb_folder` from there. No world name is hardcoded.
+Prints JSON. The KB structure comes from the plugin's own TOML config
+(`$WORKLOG_CONFIG`, else ~/.config/worklog-persist/config.toml): collections come
+from its `[outline]` table, and a repo declared under `[[worlds.projects]]` gets
+its world, project name and optional `kb_folder` from there. No world name is
+hardcoded.
 
-World precedence: manifest match, then $KB_WORLD, then "UNRESOLVED" (the caller
-asks the operator once). Usage: resolve_context.py [task-slug]
+World precedence: config match, then $WORKLOG_WORLD, then "UNRESOLVED" (the
+caller asks the operator once). Usage: resolve_context.py [task-slug]
 """
 import json
 import os
@@ -19,7 +20,7 @@ from pathlib import Path
 UNRESOLVED = "UNRESOLVED"
 # Plain kebab slug, or a ticket-prefixed one (AD-163-uat-checklist).
 SLUG_RE = re.compile(r"^(?:[A-Z][A-Z0-9]*-[0-9]+-)?[a-z0-9]+(?:-[a-z0-9]+)*$")
-# Used only when no manifest is readable; the manifest always wins.
+# Used only when no config is readable; the config always wins.
 DEFAULT_OUTLINE = {
     "root_collection": "raqz.pl",
     "global_collection": "Claude's Notebook",
@@ -48,28 +49,30 @@ def canonical_repo(cwd):
     return Path(top), main.resolve()
 
 
-def manifest_path():
-    return Path(os.environ.get("KB_MANIFEST") or Path.home() / ".config/kb/worlds.yaml")
+def config_path():
+    return Path(os.environ.get("WORKLOG_CONFIG")
+                or Path.home() / ".config/worklog-persist/config.toml")
 
 
-def load_manifest(path):
-    """Return (manifest dict or None, error string or None). Never raises."""
+def load_config(path):
+    """Return (config dict or None, error string or None). Never raises."""
     if not path.is_file():
-        return None, f"manifest not found: {path}"
+        return None, f"config not found: {path}"
     try:
-        import yaml
+        import tomllib
     except ImportError:
-        return None, "PyYAML not installed; cannot read the kb manifest"
+        return None, "config unreadable: tomllib needs Python 3.11 or newer"
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        with path.open("rb") as f:
+            data = tomllib.load(f)
     except Exception as e:  # noqa: BLE001 - report, the caller decides
-        return None, f"manifest unreadable: {e}"
+        return None, f"config unreadable: {e}"
     error = shape_error(data)
-    return (None, f"manifest malformed: {error}") if error else (data, None)
+    return (None, f"config malformed: {error}") if error else (data, None)
 
 
 def shape_error(data):
-    """Check only the shape this script reads, so a bad manifest cannot crash it."""
+    """Check only the shape this script reads, so a bad config cannot crash it."""
     if not isinstance(data, dict):
         return "not a mapping"
     if not isinstance(data.get("outline") or {}, dict):
@@ -94,8 +97,8 @@ def expand(p):
         return None
 
 
-def find_project(manifest, repo):
-    for w in manifest.get("worlds") or []:
+def find_project(config, repo):
+    for w in config.get("worlds") or []:
         for p in w.get("projects") or []:
             if p.get("repo") and expand(p["repo"]) == repo:
                 return w.get("name"), p
@@ -119,34 +122,28 @@ def main(argv):
     repo = re.sub(r"\.git$", "", remote.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]) \
         if remote else repo_root.name
 
-    mpath = manifest_path()
-    manifest, manifest_error = load_manifest(mpath)
+    cpath = config_path()
+    config, config_error = load_config(cpath)
     outline = dict(DEFAULT_OUTLINE)
-    if manifest:
-        outline.update({k: v for k, v in (manifest.get("outline") or {}).items()
+    if config:
+        outline.update({k: v for k, v in (config.get("outline") or {}).items()
                         if k in DEFAULT_OUTLINE and v})
 
     world, project, kb_folder, source = None, repo, None, "fallback"
     ignored = False
-    if manifest:
-        w, p = find_project(manifest, repo_root)
+    if config:
+        w, p = find_project(config, repo_root)
         if p:
-            world, project, kb_folder, source = w, p.get("name") or repo, p.get("kb_folder"), "manifest"
+            world, project, kb_folder, source = w, p.get("name") or repo, p.get("kb_folder"), "config"
         ignored = any(i and (i == repo_root or i in repo_root.parents)
-                      for i in map(expand, manifest.get("ignore") or []))
+                      for i in map(expand, config.get("ignore") or []))
     # An ignored repo has no Outline folder by operator decision; env must not add one.
-    if not world and not ignored and os.environ.get("KB_WORLD"):
-        world, source = os.environ["KB_WORLD"], "env"
+    if not world and not ignored and os.environ.get("WORKLOG_WORLD"):
+        world, source = os.environ["WORKLOG_WORLD"], "env"
     world = world or UNRESOLVED
 
     root = outline["root_collection"]
     kb_path = kb_folder or (f"{root}/{world}/{project}" if world != UNRESOLVED else None)
-    mirror_root = Path(os.environ.get("OUTLINE_ROOT") or Path.home() / "Development/outline-kb") / "outline-sync"
-    # The mirror drops the root-collection segment: outline-sync/<World>/<project>.
-    mirror_dir = None
-    if kb_path and kb_path.startswith(root + "/"):
-        candidate = mirror_root / kb_path[len(root) + 1:]
-        mirror_dir = str(candidate) if candidate.is_dir() else None
 
     print(json.dumps({
         "repo": repo,
@@ -154,7 +151,7 @@ def main(argv):
         "project": project,
         "world": world,
         "world_source": source,
-        "candidate_worlds": [w.get("name") for w in (manifest or {}).get("worlds") or []],
+        "candidate_worlds": [w.get("name") for w in (config or {}).get("worlds") or []],
         "ignored": ignored,
         "branch": branch,
         "worktree": str(worktree),
@@ -165,9 +162,8 @@ def main(argv):
         "kb_path": kb_path,
         "tasks_path": f"{kb_path}/Tasks" if kb_path else None,
         "record_path": f"{kb_path}/Tasks/{slug}" if kb_path and slug else None,
-        "mirror_dir": mirror_dir,
-        "manifest": str(mpath) if manifest else None,
-        "manifest_error": manifest_error,
+        "config": str(cpath) if config else None,
+        "config_error": config_error,
     }, ensure_ascii=False))
     return 0
 

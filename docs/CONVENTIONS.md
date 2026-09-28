@@ -1,16 +1,14 @@
 ---
 block: _root
 doc: CONVENTIONS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 ---
 
 # Conventions
 
-Rules every file under `docs/` follows. They copy the conventions of
-`<org>/dotfiles-next`, the repo this plugin was extracted from, so both trees read
-the same way. The job of this tree: **let someone change or rewrite the plugin
-without re-reading all of its code.**
+Rules every file under `docs/` follows. The job of this tree: **let someone
+change or rewrite the plugin without re-reading all of its code.**
 
 `tests/test_docs_layout.py` enforces every rule marked *(tested)* below. The rest
 are convention.

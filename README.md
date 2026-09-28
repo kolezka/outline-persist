@@ -113,24 +113,49 @@ results; blockers; next action; related documents; `Last updated: YYYY-MM-DD`.
 
 ## KB structure and routing
 
-The plugin follows the Outline KB layout that the `kb` tooling and the `outline`
-skill in dotfiles-next use. It reads the same manifest: `$KB_MANIFEST`, else
-`~/.config/kb/worlds.yaml`.
+The plugin reads its own config file: `$WORKLOG_CONFIG`, else
+`~/.config/worklog-persist/config.toml`. It is TOML, parsed with the Python
+standard library (`tomllib`, Python 3.11 or newer), so there is nothing extra to
+install. A missing or broken config never stops the resolver. It reports
+`config_error` and falls back to `$WORKLOG_WORLD`.
+
+```toml
+# Top-level keys go before the first [table].
+ignore = ["~/scratch"]
+
+[outline]
+root_collection = "My KB"
+global_collection = "Notebook"
+archive_collection = "Archive"
+
+[[worlds]]
+name = "Alpha"
+
+[[worlds.projects]]
+name = "my-project"
+repo = "~/code/my-project"
+
+[[worlds.projects]]
+name = "other-project"
+repo = "~/code/other"
+kb_folder = "My KB/Alpha/custom-folder"
+```
 
 - Collections (`root_collection`, `global_collection`, `archive_collection`) come
-  from the manifest `outline:` block.
-- A repo declared under `worlds[].projects[]` gets its world, project name and
-  optional `kb_folder` from the manifest. A linked git worktree resolves to its
+  from the `[outline]` table. A key left out keeps its built-in default.
+- A repo declared under `[[worlds.projects]]` gets its world, project name and
+  optional `kb_folder` from the config. A linked git worktree resolves to its
   main checkout first, so it maps to the same project.
-- An undeclared repo uses `$KB_WORLD`, else the world stays `UNRESOLVED` and the
-  agent asks once. A repo under `ignore:` gets no world and no folder by default.
+- An undeclared repo uses `$WORKLOG_WORLD`, else the world stays `UNRESOLVED` and
+  the agent asks once. A repo under `ignore`, or below an ignored dir, gets no
+  world and no folder.
 - Records live at `<kb_path>/Tasks/<task-slug>`, where `kb_path` is `kb_folder` or
   `<root_collection>/<World>/<project>`. Ticket slugs (`AD-163-uat-checklist`)
   are accepted.
-- Bootstrap follows `kb reconcile`: a world folder gets `INDEX` only, a project
+- Bootstrap is the plugin's own rule: a world folder gets `INDEX` only, a project
   folder gets `INDEX`, `Specs`, `Plans`, `Tasks`. It is idempotent.
-- `/load` can read the local mirror (`$OUTLINE_ROOT/outline-sync/<World>/<project>`)
-  when the MCP server is down. The result is labelled as a possibly stale snapshot.
+- When the MCP server is down, `/load` says persistence is unavailable. There is
+  no local fallback.
 
 Check what a repo resolves to:
 
@@ -138,8 +163,8 @@ Check what a repo resolves to:
 bash scripts/resolve-context.sh my-task-slug
 ```
 
-Reading the manifest needs PyYAML. Without it the resolver reports
-`manifest_error` and falls back to `$KB_WORLD`.
+Upgrading from 0.2: the resolver no longer reads the old YAML manifest or the old
+world env var. Move your worlds into the TOML file above and use `WORKLOG_WORLD`.
 
 ## Tests
 
@@ -154,15 +179,14 @@ credentials in CI.
 
 ## Documentation
 
-`docs/` describes the plugin by building block, using the same layout as
-`dotfiles-next`: each block has `README`, `CONTRACTS`, `INVARIANTS`, `GAPS` and
-`OPERATIONS` pages. Start at [`docs/README.md`](docs/README.md). Rules for writing
-there are in [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md), and
-`tests/test_docs_layout.py` enforces them.
+`docs/` describes the plugin by building block: each block has `README`,
+`CONTRACTS`, `INVARIANTS`, `GAPS` and `OPERATIONS` pages. Start at
+[`docs/README.md`](docs/README.md). Rules for writing there are in
+[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md), and `tests/test_docs_layout.py`
+enforces them.
 
 ## Scope boundary
 
-This plugin was extracted from `dotfiles-next` as the Outline **persistence**
-contract only: the `outline` skill, its SessionStart rule, and the `outline` MCP
-entry. Reflection (`critic`/`reflect`), graph sync (`graphify`, `sync_outline`)
-and curriculum remain separate systems and are not included here.
+This plugin covers Outline persistence only: the skill, its SessionStart rule,
+the slash commands and the `outline` MCP entry. It has no reflection, no graph
+sync and no curriculum. It reads no config but its own.

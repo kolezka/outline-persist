@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: CONTRACTS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 ---
 
 # Contracts
@@ -31,8 +31,7 @@ manifest works regardless of where the plugin was installed `[verified]`.
 
 enforcement: convention. No test in this repo inspects the literal `command`
   string inside `hooks/hooks.json`; `tests/test_structure.sh` only checks that
-  the `SessionStart` key exists and that the dedupe marker is present in
-  `scripts/session-start.sh`, not that the manifest invokes it correctly
+  the `SessionStart` key exists, not that the manifest invokes it correctly
   `[verified]`.
 
 ## `scripts/session-start.sh` output contract
@@ -64,20 +63,26 @@ enforcement: convention. No test feeds the script a reminder string containing
   a double quote or backslash to confirm the escaping holds; the current
   reminder text just happens not to need it `[verified]`.
 
-### The dedupe marker text is verbatim
+### The reminder carries the resolved identity, or the reason it has none
 
-The reminder text starts with the literal substring
-`scripts/session-start.sh::"Outline (MCP server"`. The script's own comment
-says this exact text is kept verbatim for parity with the dotfiles-next
-installer, which removes duplicate `SessionStart` entries by matching on it
-(`scripts/session-start.sh::"removes duplicate SessionStart entries by it"`)
-`[verified]`. Changing this substring would silently break that external
-dedupe match; the dedupe logic itself is not part of this repo and is not
-independently re-checked here `[assumption]`.
+After the static rule, the script runs `resolve-context.sh` and appends one
+sentence `[verified]`:
 
-enforcement: `tests/test_structure.sh::"session-start.sh missing dedupe marker"`
-  greps the file for the literal string at test time; nothing enforces it at
-  hook-run time.
+- with a `kb_path`: the world, project, KB folder and tasks path
+  (`scripts/session-start.sh::"Resolved for this repo"`);
+- for an ignored repo: that it has no Outline folder
+  (`scripts/session-start.sh::"in the worklog-persist config"`);
+- otherwise: that the world is unresolved, with the resolver's `config_error`
+  as the cause, or a default cause naming `WORKLOG_WORLD`
+  (`scripts/session-start.sh::"config_error"`).
+
+A resolver failure adds nothing and never fails the hook
+(`scripts/session-start.sh::"a resolver failure must never break session start"`)
+`[verified]`.
+
+enforcement: `tests/test_offswitch.sh::"hook names kb_path"` and
+  `tests/test_offswitch.sh::"hook states unresolved cause"` (test suite only).
+  The ignored-repo sentence has no hook-level test `[verified]`.
 
 ### The hook names the server, not a tool prefix
 

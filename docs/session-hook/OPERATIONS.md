@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: OPERATIONS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 ---
 
 # Operations

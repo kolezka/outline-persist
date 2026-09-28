@@ -1,8 +1,8 @@
 ---
 block: persistence-protocol
 doc: CONTRACTS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 ---
 
 # Contracts
@@ -66,30 +66,69 @@ run time).
 ## Identity resolution: `scripts/resolve-context.sh`
 
 Invoked as `skills/worklog-persist/SKILL.md::"bash ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-context.sh"`
-[verified]. Prints one JSON object with exactly six fields: `repo`, `project`,
-`world`, `branch`, `worktree`, `task_slug`
-(`scripts/resolve-context.sh::"repo, project, world, branch, worktree, task_slug"`)
-[verified].
+[verified]. The shell file is a thin wrapper that execs
+`scripts/resolve_context.py` (`scripts/resolve-context.sh::"Thin wrapper"`)
+[verified]. `scripts/resolve_context.py::main()` prints one JSON object with
+these keys: `repo`, `repo_root`, `project`, `world`, `world_source`,
+`candidate_worlds`, `ignored`, `branch`, `worktree`, `task_slug`,
+`root_collection`, `global_collection`, `archive_collection`, `kb_path`,
+`tasks_path`, `record_path`, `config`, `config_error` [verified].
 
-- `project` and `repo` are the basename of `git remote get-url origin` with
-  `.git` stripped, falling back to the working-tree directory name when there is
-  no remote (`scripts/resolve-context.sh::"remote get-url origin"`)
+- `repo_root` is the main checkout, also from a linked worktree
+  (`scripts/resolve_context.py::canonical_repo()`) [verified].
+- `project` is the config `name` of a declared repo, else the basename of the
+  `origin` remote with `.git` stripped, else the main checkout directory name
+  (`scripts/resolve_context.py::"remote", "get-url", "origin"`) [verified].
+- `world` comes from the config when the repo is declared there
+  (`world_source` = `config`), else from `$WORKLOG_WORLD` (`env`), else it is the
+  sentinel `UNRESOLVED` (`fallback`)
+  (`scripts/resolve_context.py::"WORKLOG_WORLD"`) [verified]. An ignored repo
+  never takes the env world [verified]. No other env var or file sets it
   [verified].
-- `world` is `$KB_WORLD` if set, else the literal sentinel `UNRESOLVED`
-  (`scripts/resolve-context.sh::"KB_WORLD:-UNRESOLVED"`)
-  [verified]. The script itself never shells out to `kb`; see
-  [`GAPS.md`](GAPS.md) for what that means for the manifest fallback the skill
-  describes.
-- `task_slug`, when given, must match lowercase kebab-case
-  (`scripts/resolve-context.sh::"^[a-z0-9]+(-[a-z0-9]+)*$"`) [verified], or the
+- `kb_path` is the config `kb_folder` when set, else
+  `<root_collection>/<world>/<project>`, and `None` while the world is
+  `UNRESOLVED` [verified]. `tasks_path` and `record_path` hang off it.
+- `config` is the path that was read, or `None`; `config_error` says why no
+  config was used (`not found`, `unreadable`, `malformed`), or is `None`
+  (`scripts/resolve_context.py::load_config()`) [verified].
+- `task_slug`, when given, must match `scripts/resolve_context.py::SLUG_RE`
+  (kebab-case, optionally ticket-prefixed like `AD-163-uat-checklist`), or the
   script exits `2` with a message on stderr
-  (`scripts/resolve-context.sh::"invalid task slug"`) [verified].
+  (`scripts/resolve_context.py::"invalid task slug"`) [verified].
 
-enforcement: `tests/test_context.sh::"remote project basename"`,
-`tests/test_context.sh::"KB_WORLD honored"` and
-`tests/test_context.sh::"invalid slug rejected"` cover the three branches
-above (test suite only, run via `bash tests/test_context.sh` / `make check`,
-not on every invocation of the script itself).
+enforcement: `tests/test_context.sh::"WORKLOG_WORLD honored"`,
+`tests/test_context.sh::"config identity"`,
+`tests/test_context.sh::"worktree identity"`,
+`tests/test_context.sh::"ignored beats WORKLOG_WORLD"`,
+`tests/test_context.sh::"old coupling ignored"` and
+`tests/test_context.sh::"invalid slug rejected"` (test suite only, via
+`make check`, not on every invocation of the script).
+
+---
+
+## Plugin config file
+
+The resolver reads one TOML file: `$WORKLOG_CONFIG`, else
+`~/.config/worklog-persist/config.toml`
+(`scripts/resolve_context.py::config_path()`) [verified]. It is parsed with the
+standard library `tomllib` (`scripts/resolve_context.py::"import tomllib"`), so
+the plugin has no third-party runtime dependency [verified]. The shape it reads:
+
+- `[outline]` with `root_collection`, `global_collection`, `archive_collection`.
+  A missing key keeps `scripts/resolve_context.py::DEFAULT_OUTLINE` [verified].
+- `[[worlds]]` with `name`, each holding `[[worlds.projects]]` with `name`,
+  `repo` and an optional `kb_folder`. `repo` is matched after `~` expansion and
+  symlink resolution (`scripts/resolve_context.py::expand()`) [verified].
+- top-level `ignore = [...]`: a repo equal to or below one of these dirs is
+  `ignored` [verified].
+
+Any other key is ignored. A file with the wrong shape is rejected whole by
+`scripts/resolve_context.py::shape_error()` and reported in `config_error`, never
+raised [verified].
+
+enforcement: `tests/test_context.sh::"malformed config"`,
+`tests/test_context.sh::"unparseable config"` and
+`tests/test_context.sh::"missing config reported"` (test suite only).
 
 ---
 
@@ -125,16 +164,16 @@ actually pipes a given write through `redact.py` before calling
 
 ## Persisted record identity: idempotency key
 
-The record's identity is `project` + `task_slug`, realized as the document
-`Tasks/<task-slug>` inside `raqz.pl/<World>/<project>`
-(`skills/worklog-persist/SKILL.md::"stable key = resolved"`) [verified]. Before
+The record's identity is `project` + `task_slug`, realized as the document at
+`record_path`
+(`skills/worklog-persist/SKILL.md::"The record identity is"`) [verified]. Before
 creating a record, the commands call `list_documents` scoped to that `Tasks`
 folder and match the slug; if found, they `update_document` it instead
 (`commands/start.md::"prefer updating the existing record over creating a duplicate"`)
 [verified]. `commands/checkpoint.md::"idempotency key = project + task slug"`
 names the same rule for the checkpoint step [verified]. A timestamp alone is explicitly
 rejected as an identity source:
-`skills/worklog-persist/SKILL.md::"Never use a timestamp alone as document identity."`
+`skills/worklog-persist/SKILL.md::"Never use a timestamp as document identity."`
 [verified].
 
 enforcement: convention. No test drives a real or mocked `list_documents` /
@@ -154,6 +193,8 @@ and each command file repeats it, e.g.
 to say so once and continue the task without Outline, never to substitute a
 local claim of success:
 `skills/worklog-persist/SKILL.md::"state once that persistence is"` [verified].
+There is no offline read path: `/load` says persistence is unavailable and stops
+(`commands/load.md::"say persistence is unavailable and stop"`) [verified].
 
 enforcement: convention. This is prompt text interpreted by the model each
 session; no script or test observes whether the agent actually checked

@@ -1,8 +1,8 @@
 ---
 block: verification
 doc: INVARIANTS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 ---
 
 # Invariants
@@ -33,12 +33,19 @@ under.
    flipping the off-switch in the developer's real state directory, silencing the
    hook outside the test.
 
-4. **`resolve-context.sh` is checked for exactly one world assignment.**
-   `tests/test_context.sh::"single world assignment"` counts occurrences of
-   `world="` in the script and requires exactly one. [verified] Defect prevented:
-   a second, hardcoded world literal added next to the sanctioned
-   `KB_WORLD`-or-sentinel assignment, defeating the world-agnostic contract
-   without any single test catching the specific hardcoded value.
+4. **The resolver suite never reads the host's config or world.**
+   `tests/test_context.sh` unsets the world env vars and points `WORKLOG_CONFIG`
+   at a file inside its own `mktemp -d` directory before the first case.
+   [verified] Defect prevented: a case passing or failing because of the
+   developer's real config, which would make the suite prove nothing on a
+   clean machine.
+
+   The same suite checks that the pre-0.3 world env var and manifest have no
+   effect (`tests/test_context.sh::"old coupling ignored"`), and greps the
+   resolver for world-name literals
+   (`tests/test_context.sh::"world name literal in resolve_context.py"`).
+   [verified] Defect prevented: world routing quietly coming back from another
+   tool's settings, or from a name typed into the code.
 
 5. **Redaction is checked against ordinary text, not only against secrets.**
    `tests/test_redact.py::test_preserves_ordinary_text()` asserts a plain

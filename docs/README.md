@@ -1,15 +1,14 @@
 ---
 block: _root
 doc: README
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 unassigned: [README.md, AGENTS.md, .claude/, .ai/, .gitkeep, docs/]
 ---
 
 # docs: the plugin by building block
 
-What `worklog-persist` is, cut into the blocks it is built from. The layout is the
-one `<org>/dotfiles-next` uses, so a reader of either repo knows where to look.
+What `worklog-persist` is, cut into the blocks it is built from.
 
 Read [`CONVENTIONS.md`](CONVENTIONS.md) before you write here.
 

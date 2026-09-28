@@ -25,11 +25,10 @@ fi
 grep -q '${OUTLINE_API_TOKEN}' "$ROOT/.mcp.json" || fail ".mcp.json should use \${OUTLINE_API_TOKEN} placeholder"
 note "ok: credentials are env placeholders only"
 
-# 4. hooks.json uses the plugin (wrapped) shape and the dedupe marker text.
+# 4. hooks.json uses the plugin (wrapped) shape.
 python3 -c "import json;h=json.load(open('$ROOT/hooks/hooks.json'));assert h['hooks']['SessionStart']" \
   || fail "hooks.json missing wrapped SessionStart"
-grep -q 'Outline (MCP server' "$ROOT/scripts/session-start.sh" || fail "session-start.sh missing dedupe marker"
-note "ok: hooks wrapped + marker present"
+note "ok: hooks wrapped"
 
 # 5. All 7 verbs exist as commands.
 for c in load start checkpoint handoff complete dry-run off; do

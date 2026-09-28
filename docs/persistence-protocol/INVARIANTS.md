@@ -1,8 +1,8 @@
 ---
 block: persistence-protocol
 doc: INVARIANTS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 ---
 
 # Invariants
@@ -41,7 +41,7 @@ sent the call, not from Outline's response.
 
 ### 4. One record per (project, task slug), never a second one
 
-`skills/worklog-persist/SKILL.md::"stable key = resolved"` [verified];
+`skills/worklog-persist/SKILL.md::"The record identity is"` [verified];
 `commands/checkpoint.md::"idempotency key = project + task slug"` [verified].
 Defect prevented: two documents for the same task drifting apart, so `/load` in
 a later session reads a stale or partial one depending on which it happens to
@@ -49,20 +49,22 @@ find.
 
 ### 5. A task slug is validated kebab-case or the script fails loud
 
-`scripts/resolve-context.sh::"^[a-z0-9]+(-[a-z0-9]+)*$"` [verified]; on mismatch
-the script exits `2` rather than returning a malformed slug
-(`scripts/resolve-context.sh::"invalid task slug"`) [verified]. Defect
+`scripts/resolve_context.py::SLUG_RE` [verified]; on mismatch the script exits
+`2` rather than returning a malformed slug
+(`scripts/resolve_context.py::"invalid task slug"`) [verified]. Defect
 prevented: a slug like `My Task` or `Fix_Bug` silently becoming part of the
 idempotency key in invariant 4, so two spellings of the same task each get
 their own document.
 
-### 6. World is read from `$KB_WORLD` or an explicit sentinel, never hardcoded
+### 6. World comes from the plugin config, `$WORKLOG_WORLD` or a sentinel, never hardcoded
 
-`scripts/resolve-context.sh::"KB_WORLD:-UNRESOLVED"` [verified]. Defect
-prevented: the plugin's identity-resolution code naming one customer's or one
-operator's world, which would make every other world's session either write to
-the wrong place or silently do nothing there. `tests/test_context.sh::"KB_WORLD honored"`
-exercises the override path (test suite only) [verified].
+`scripts/resolve_context.py::"WORKLOG_WORLD"` [verified]. No other env var or
+file feeds it. Defect prevented: the plugin's identity-resolution code naming
+one operator's world, or picking one up from another tool's settings, which
+would make a session write to the wrong place with no visible cause.
+`tests/test_context.sh::"WORKLOG_WORLD honored"` exercises the override path and
+`tests/test_context.sh::"old coupling ignored"` proves the pre-0.3 names have no
+effect (test suite only) [verified].
 
 ### 7. Redaction does not rewrite text that was never secret-shaped
 
@@ -84,3 +86,20 @@ double-redacted, harder-to-read artifact such as nested `<REDACTED:` markers.
 [verified]. Defect prevented: a task marked `complete` in Outline while its
 acceptance criteria were never actually verified, which a later session would
 trust at face value per invariant 3's own logic.
+
+### 10. A bad config never crashes the resolver
+
+`scripts/resolve_context.py::load_config()` returns an error string instead of
+raising for a missing, unparseable or wrongly shaped file [verified]. Defect
+prevented: one broken config file making `resolve-context.sh` exit non-zero,
+which would break every command and leave the SessionStart hook without an
+identity. `tests/test_context.sh::"malformed config"` and
+`tests/test_context.sh::"unparseable config"` cover it (test suite only)
+[verified].
+
+### 11. An ignored repo gets no Outline folder, even with `$WORKLOG_WORLD` set
+
+`scripts/resolve_context.py::"An ignored repo has no Outline folder"` [verified].
+Defect prevented: an env var set for one repo routing records for a repo the
+operator excluded on purpose. `tests/test_context.sh::"ignored beats WORKLOG_WORLD"`
+covers it (test suite only) [verified].

@@ -1,7 +1,7 @@
 ---
 name: worklog-persist
 description: Use whenever you start, checkpoint, hand off, or finish non-trivial work, or need prior context on a task/feature/bug/decision. Durable work-state persistence backed by the Outline MCP server — read current state before acting, record task start, checkpoint at verified milestones, write handoff and completion.
-version: 0.2.0
+version: 0.3.0
 ---
 
 # worklog-persist: durable work-state persistence
@@ -57,24 +57,23 @@ JSON. Use its paths as given; never rebuild them by hand.
 
 | Field | Meaning |
 |---|---|
-| `world`, `project` | From the kb manifest when the repo is declared there |
-| `world_source` | `manifest`, `env` (`$KB_WORLD`) or `fallback` |
+| `world`, `project` | From the plugin config when the repo is declared there |
+| `world_source` | `config`, `env` (`$WORKLOG_WORLD`) or `fallback` |
 | `kb_path` | Project folder in Outline (`kb_folder` override, else `<root>/<World>/<project>`) |
 | `tasks_path`, `record_path` | `<kb_path>/Tasks` and `<kb_path>/Tasks/<slug>` |
-| `root_collection`, `global_collection`, `archive_collection` | From the manifest `outline:` block |
+| `root_collection`, `global_collection`, `archive_collection` | From the config `[outline]` table |
 | `repo_root`, `worktree`, `branch` | `repo_root` is the main checkout, also from a linked worktree |
-| `ignored` | The manifest lists this repo under `ignore:` |
-| `mirror_dir` | Local read-only mirror of the project folder, if present |
-| `manifest`, `manifest_error` | Which manifest was read, or why none was |
+| `ignored` | The config lists this repo, or a parent dir, under `ignore` |
+| `config`, `config_error` | Which config was read, or why none was |
 
-The manifest is the one the `kb` CLI reads: `$KB_MANIFEST`, else
-`~/.config/kb/worlds.yaml`. A world overlay sets `KB_MANIFEST` to its own file, so
-the same repo can resolve differently per context. That is intended.
+The config is this plugin's own TOML file: `$WORKLOG_CONFIG`, else
+`~/.config/worklog-persist/config.toml`. Pointing `WORKLOG_CONFIG` at another
+file lets the same repo resolve differently per context. That is intended.
 
-- **World** is never hardcoded. Precedence: manifest match, then `$KB_WORLD`, then
+- **World** is never hardcoded. Precedence: config match, then `$WORKLOG_WORLD`, then
   `UNRESOLVED`. On `UNRESOLVED`, ask the operator once (offer `candidate_worlds`),
   then proceed. Do not write anything until the world is known.
-- **Project** is the manifest `name` when declared (it can differ from the repo
+- **Project** is the config `name` when declared (it can differ from the repo
   name), else the basename of `git remote get-url origin`, else the main checkout
   directory name. A worktree directory name is never the project.
 - **Ignored repo**: the operator decided it has no Outline folder. Do not bootstrap
@@ -84,8 +83,7 @@ the same repo can resolve differently per context. That is intended.
 
 ## Structure and routing
 
-This matches the `outline` skill and the `kb` tooling in dotfiles-next. Names in
-angle brackets come from the resolver.
+Names in angle brackets come from the resolver.
 
 ```
 <root_collection>/                 active KB (usually raqz.pl)
@@ -117,9 +115,10 @@ Run before the first write in a session, never before a read-only load.
 2. Resolve each segment of `kb_path` with `list_documents`. Create only what is
    missing, and check each child before you create it. This repairs a partial
    folder and never duplicates.
-3. Seeding shape depends on depth, as in `kb reconcile`: a **world** folder gets
-   `INDEX` only; a **project** folder gets `INDEX`, `Specs`, `Plans`, `Tasks`. Never
-   seed `Specs`/`Plans`/`Tasks` at world level.
+3. Seeding shape depends on depth: a **world** folder gets `INDEX` only; a
+   **project** folder gets `INDEX`, `Specs`, `Plans`, `Tasks`. Never seed
+   `Specs`/`Plans`/`Tasks` at world level. Running bootstrap twice creates nothing
+   new.
 4. A folder that has no `INDEX` is a hub gap. Report it, do not skip it silently.
 
 ## The persisted work record
@@ -161,8 +160,8 @@ change updates that flag. If the parent is missing, report the record as orphane
 
 - **load** — resolve identity; find the record at `record_path`; read it plus the
   project `INDEX` and linked docs before substantive work; return a concise
-  current-state summary. If Outline is unavailable and `mirror_dir` is set, read the
-  mirror instead (see below) and say it can be stale.
+  current-state summary. If Outline is unavailable, say persistence is unavailable
+  and stop the load.
 - **start** — bootstrap if needed; create or update `record_path` with objective, acceptance criteria,
   repo, worktree, branch; link related Specs/Plans/existing docs. Update the `Tasks`
   parent child-list.
@@ -179,15 +178,6 @@ change updates that flag. If the parent is missing, report the record as orphane
   fields, the redacted body) without calling any write tool.
 - **off** — `bash ${CLAUDE_PLUGIN_ROOT}/scripts/persistence-state.sh off` disables the
   automatic SessionStart rule without removing the plugin; `... on` re-enables.
-
-## Offline mirror (read-only)
-
-`mirror_dir` is the dotfiles-next sync of the Outline tree
-(`$OUTLINE_ROOT/outline-sync/<World>/<project>`, no root-collection segment). Files
-are named `<slug>-<id8>.md`, and the frontmatter `title:` is the Outline title. To
-find a record, match `title:` to the slug, not the file name. The mirror is a
-snapshot: never write to it, and never report it as the current state without
-saying so.
 
 ## When to write vs. not
 

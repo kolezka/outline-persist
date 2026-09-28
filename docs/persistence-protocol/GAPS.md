@@ -1,8 +1,8 @@
 ---
 block: persistence-protocol
 doc: GAPS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: 487ab42
+verified_on: 2026-09-28
 ---
 
 # Gaps
@@ -31,23 +31,28 @@ body, or reporting "saved to Outline" without ever calling a write tool. See
 [`../verification/GAPS.md`](../verification/GAPS.md) for what the test suite as
 a whole does and does not cover.
 
-## `resolve-context.sh` does not call `kb`
+## No migration from the 0.2 manifest
 
-The skill describes world resolution as a fallback chain: `$KB_WORLD`,
-`skills/worklog-persist/SKILL.md::"else the manifest via"` `kb list`
-[verified]. The script itself only implements the first step:
-`world="${KB_WORLD:-UNRESOLVED}"`
-(`scripts/resolve-context.sh::"KB_WORLD:-UNRESOLVED"`) [verified], and its own
-header comment says why: `kb list` renders a human table, not JSON, so the
-script does not parse it
-(`scripts/resolve-context.sh::"do not parse it here."`) [verified]. The `kb
-list` / manifest fallback is therefore something the *agent* is expected to run
-separately, as a second command, when it sees the `UNRESOLVED` sentinel. If a
-session does not do that and does not ask the operator either, `UNRESOLVED`
-becomes the literal folder name used in Outline paths, silently, since the
-script has no way to detect that the fallback was skipped [inferred: the script
-returns a plain string field with no flag distinguishing "resolved from
-KB_WORLD" from "sentinel because no one has resolved it yet"].
+The resolver does not look for the old YAML manifest or read the old world env
+var, by design (see [`DECISIONS.md`](DECISIONS.md#its-own-config-not-a-shared-manifest)).
+An operator who upgrades without writing the TOML file gets `UNRESOLVED` for
+every repo, with `config_error` set to `config not found: ...` [verified]. The
+SessionStart hook passes that cause on, so the agent asks, but nothing converts
+the old file for them [inferred: no code in this repo reads YAML any more].
+
+## A config with one bad entry is dropped whole
+
+`scripts/resolve_context.py::shape_error()` rejects the whole file when any one
+part has the wrong shape, for example one `projects` value that is not an array
+of tables [verified]. Every repo then resolves as if no config existed. The
+cause is in `config_error`, but a single typo still turns off routing for all
+worlds [inferred from `load_config()` returning `None` on any shape error].
+
+## The old-Python branch is untested
+
+`scripts/resolve_context.py::load_config()` reports `tomllib needs Python 3.11 or newer`
+when `import tomllib` fails. No test runs it under an older interpreter
+[verified].
 
 ## Redaction coverage is a fixed rule list, not a guarantee
 

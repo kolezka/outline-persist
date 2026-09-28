@@ -1,9 +1,9 @@
 ---
 block: persistence-protocol
 doc: README
-verified_against: 6e559c3
-verified_on: 2026-09-24
-owns: [skills/, commands/, scripts/resolve-context.sh, scripts/redact.py]
+verified_against: 487ab42
+verified_on: 2026-09-28
+owns: [skills/, commands/, scripts/resolve-context.sh, scripts/resolve_context.py, scripts/redact.py]
 depends_on: [packaging]
 ---
 
@@ -24,7 +24,10 @@ SessionStart hook or the on/off state file either; that is
 ## Boundary
 
 Owned: `skills/worklog-persist/SKILL.md`, all seven files in `commands/`,
-`scripts/resolve-context.sh`, `scripts/redact.py`.
+`scripts/resolve-context.sh`, `scripts/resolve_context.py`, `scripts/redact.py`.
+
+Also owned, though it lives outside the repo: the format of the plugin config
+file that the resolver reads. See [`CONTRACTS.md`](CONTRACTS.md#plugin-config-file).
 
 Not owned, referenced only: `.mcp.json` (packaging), `scripts/persistence-state.sh`
 and `hooks/` (session-hook), `tests/` (verification, cited here only as
@@ -44,16 +47,18 @@ skill's **\<verb\>** step", for example
 `skills/worklog-persist/SKILL.md::"mcp__plugin_worklog-persist_outline__*"` do,
 so the dual-prefix contract lives in exactly one place [verified].
 
-Identity comes from `scripts/resolve-context.sh` (repo, project, world, branch,
-worktree, task slug); secrets are stripped by `scripts/redact.py::redact()`
-before any write. See [`CONTRACTS.md`](CONTRACTS.md) for both.
+Identity and the Outline address come from `scripts/resolve-context.sh`, which
+runs `scripts/resolve_context.py::main()` over git and the plugin's own TOML
+config [verified]. Secrets are stripped by `scripts/redact.py::redact()` before
+any write. See [`CONTRACTS.md`](CONTRACTS.md) for both.
 
 ```mermaid
 flowchart LR
     Cmds["/load /start /checkpoint /handoff /complete /dry-run /off"] --> Skill["skills/worklog-persist/SKILL.md"]
     Skill --> Resolve["scripts/resolve-context.sh"]
     Skill --> Redact["scripts/redact.py"]
-    Resolve -->|world| World{"$KB_WORLD or UNRESOLVED"}
+    Config[("config.toml")] --> Resolve
+    Resolve -->|world| World{"config, $WORKLOG_WORLD or UNRESOLVED"}
     Skill -->|ToolSearch| Prefix{"mcp__outline__* or\nmcp__plugin_worklog-persist_outline__*"}
     Prefix --> Outline[("Outline MCP server")]
     Redact -->|"<REDACTED:kind>"| Outline
@@ -63,7 +68,7 @@ flowchart LR
 
 | File | Holds |
 |---|---|
-| [`CONTRACTS.md`](CONTRACTS.md) | The command set, the dual MCP prefix, identity resolution, redaction, record identity |
+| [`CONTRACTS.md`](CONTRACTS.md) | The command set, the dual MCP prefix, identity resolution, the config file, redaction, record identity |
 | [`INVARIANTS.md`](INVARIANTS.md) | Behaviours the skill text requires and what breaks without them |
 | [`GAPS.md`](GAPS.md) | Where only the model, not code, enforces the protocol |
 | [`OPERATIONS.md`](OPERATIONS.md) | The seven entry points, where identity and state come from, stuck states |

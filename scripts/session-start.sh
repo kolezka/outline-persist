@@ -16,8 +16,6 @@ if bash "$here/persistence-state.sh" status | grep -q '^off$'; then
   exit 0
 fi
 
-# Dedupe marker "Outline (MCP server" is kept verbatim for parity with the
-# dotfiles-next installer, which removes duplicate SessionStart entries by it.
 read -r -d '' CONTEXT <<'CTX' || true
 Outline (MCP server `outline`) is this session's durable work-state store. RULE: before non-trivial work, load current task context from the project's Outline folder (do not redo captured analysis); at task start create or update the task record; checkpoint progress at meaningful verified milestones; write a handoff when the session ends or is blocked; record the real outcome at completion. Use a stable idempotency key (resolved project + task slug) so repeated checkpoints update one record, never duplicate. Never store secrets, tokens, keys or PII. If the `outline` MCP server is not connected, state that persistence is unavailable and continue. Run the worklog-persist skill or /load, /start, /checkpoint, /handoff, /complete, /dry-run, /off for the full protocol.
 CTX
@@ -37,10 +35,10 @@ if i and i.get("kb_path"):
     ctx += (f" Resolved for this repo: world `{i['world']}`, project `{i['project']}`,"
             f" KB folder `{i['kb_path']}`, task records under `{i['tasks_path']}`.")
 elif i and i.get("ignored"):
-    ctx += (f" Project `{i['project']}` is under `ignore:` in the kb manifest:"
+    ctx += (f" Project `{i['project']}` is under `ignore` in the worklog-persist config:"
             " it has no Outline folder. Ask the operator before writing anything for it.")
 elif i:
-    cause = i.get("manifest_error") or "repo not declared in the kb manifest, no KB_WORLD"
+    cause = i.get("config_error") or "repo not declared in the worklog-persist config, no WORKLOG_WORLD"
     ctx += (f" World for project `{i['project']}` is unresolved ({cause});"
             " ask the operator once before writing.")
 print(json.dumps({
