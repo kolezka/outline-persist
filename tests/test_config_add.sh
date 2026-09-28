@@ -160,4 +160,17 @@ printf 'ignore:\n  - %s\n  - %s\n' "$wt" "$one" > "$dicfg"
 rc=0; WORKLOG_CONFIG="$dicfg" bash "$ADD" ignore --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
 check "stale beside canonical ignore: one entry left" "$rc $(python3 -c 'import sys,yaml;print(*yaml.safe_load(open(sys.argv[1]))["ignore"])' "$dicfg")" "0 $one"
 
+# 18. A stored path in another case (case-insensitive disk) still counts as that repo.
+if [ -d "$tmp/myrepo" ]; then
+  kcfg="$tmp/case-stored.yaml"
+  printf 'worlds:\n  - name: A\n    projects:\n      - {name: m, repo: %s}\n' "$tmp/myrepo" > "$kcfg"
+  before="$(sum "$kcfg")"
+  rc=0; WORKLOG_CONFIG="$kcfg" bash "$ADD" project --world B --name m --repo "$tmp/MyRepo" >/dev/null 2>&1 || rc=$?
+  check "stale case entry: other world refused" "$([ "$rc" != 0 ] && echo yes) $(sum "$kcfg")" "yes $before"
+  rc=0; WORKLOG_CONFIG="$kcfg" bash "$ADD" project --world A --name m --repo "$tmp/MyRepo" >/dev/null 2>&1 || rc=$?
+  check "stale case entry: rewritten to on-disk case" "$rc $(repos "$kcfg")" "0 $(cd "$tmp/MyRepo" && pwd -P)"
+else
+  echo "skip: stored case mismatch (case-sensitive filesystem)"
+fi
+
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }

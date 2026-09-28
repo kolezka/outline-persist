@@ -21,6 +21,7 @@ an entry with that path already exists.
 Exit codes: 0 written or no change, 1 refused, 2 bad arguments.
 """
 import argparse
+import functools
 import os
 import sys
 import tempfile
@@ -76,12 +77,34 @@ def declared(data):
 def canonical(stored):
     """A stored repo path compared as its main checkout, since older versions stored worktree paths."""
     path = expand(stored)
-    if not stored or not path or not path.is_dir():
+    if not stored or not path or not path.is_dir() or not needs_mapping(path):
         return path
     try:
         return main_checkout(path)
     except Refused:
         return path
+
+
+@functools.lru_cache(maxsize=None)
+def dir_names(directory):
+    """Names in a directory, cached: stored repos often share their parents."""
+    return frozenset(os.listdir(directory))
+
+
+def needs_mapping(path):
+    """False when `path` is in its on-disk case and not in a linked worktree, so git can be skipped."""
+    try:
+        for p in (path, *path.parents):
+            if p.name and p.name not in dir_names(p.parent):
+                return True  # typed in another case on a case-insensitive disk
+        for p in (path, *path.parents):
+            if (p / ".git").is_file():
+                return True  # linked worktree, or a git dir kept elsewhere
+            if (p / ".git").is_dir():
+                return False
+    except OSError:
+        return True
+    return False
 
 
 def ignored_by(data, repo):
