@@ -117,4 +117,13 @@ else
   echo "skip: case mismatch (case-sensitive filesystem)"
 fi
 
+# 14. Without a git binary the repo is stored as given, never a traceback.
+mkdir -p "$tmp/nogit-bin"
+py="$(python3 -c 'import sys;print(sys.executable)')"
+check "no git: git really absent" "$(PATH="$tmp/nogit-bin" command -v git || echo none)" "none"
+gcfg="$tmp/nogit.yaml"
+rc=0; err="$(PATH="$tmp/nogit-bin" WORKLOG_CONFIG="$gcfg" "$py" "$ROOT/scripts/config_add.py" project --world Alpha --name ng --repo "$tmp/two" 2>&1 >/dev/null)" || rc=$?
+check "no git: exit 0, no traceback" "$rc $(grep -c Traceback <<<"$err" || true)" "0 0"
+check "no git: stored as given" "$(repos "$gcfg")" "$(cd "$tmp/two" && pwd -P)"
+
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }

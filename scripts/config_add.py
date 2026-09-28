@@ -119,7 +119,10 @@ def add_ignore(data, repo):
 
 def main_checkout(repo):
     """Map a path in a linked worktree to the same path in the main checkout."""
-    top, main = canonical_repo(repo)
+    try:
+        top, main = canonical_repo(repo)
+    except OSError:  # no git binary: keep the path as given
+        return repo
     if top is None:
         return repo
     # samefile, not string compare: a case-insensitive disk accepts a path typed in another case.
