@@ -12,6 +12,8 @@ untouched. A repo already declared differently is an error, never a silent
 move. A file that cannot be parsed, or has the wrong shape, is never rewritten.
 Writes go to a temp file in the same dir, then replace the config in one step.
 A symlinked config is written through: the link stays, its target is replaced.
+A repo path in a linked git worktree is stored as its main checkout, the path
+the resolver matches.
 
 Exit codes: 0 written or no change, 1 refused, 2 bad arguments.
 """
@@ -22,7 +24,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from resolve_context import config_path, expand, shape_error  # noqa: E402
+from resolve_context import canonical_repo, config_path, expand, shape_error  # noqa: E402
 
 
 class Refused(Exception):
@@ -115,6 +117,14 @@ def add_ignore(data, repo):
     return f"added {repo} to ignore"
 
 
+def main_checkout(repo):
+    """Map a path in a linked worktree to the same path in the main checkout."""
+    top, main = canonical_repo(repo)
+    if top is None:
+        return repo
+    return main / repo.relative_to(top.resolve())
+
+
 def segment(value):
     value = value.strip()
     if not value or "/" in value:
@@ -138,6 +148,7 @@ def main(argv):
     if not repo or not repo.is_dir():
         print(f"config-add: repo is not a directory: {args.repo}", file=sys.stderr)
         return 2
+    repo = main_checkout(repo)
     try:
         import yaml
     except ImportError:

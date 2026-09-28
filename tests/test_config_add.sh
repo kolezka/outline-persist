@@ -94,4 +94,15 @@ check "symlink: target has entry" "$(grep -c 'name: linked' "$tmp/dotfiles/confi
 check "symlink: target mode kept" "$(python3 -c 'import os,sys;print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$tmp/dotfiles/config.yaml")" "0o600"
 check "symlink: no temp file left" "$(find "$tmp/dotfiles" "$tmp/linkdir" -name '*.tmp' | wc -l | tr -d ' ')" "0"
 
+# 12. A linked worktree is stored as its main checkout, so the resolver matches it.
+git -C "$tmp/one" worktree add -q "$tmp/one-wt" -b wt
+wcfg="$tmp/wt.yaml"
+rc=0; WORKLOG_CONFIG="$wcfg" bash "$ADD" project --world Alpha --name proj-one --repo "$tmp/one-wt" >/dev/null 2>&1 || rc=$?
+check "worktree: exit 0" "$rc" "0"
+check "worktree: resolves from worktree" "$(cd "$tmp/one-wt" && WORKLOG_CONFIG="$wcfg" bash "$RESOLVE" | ident)" "Alpha config proj-one raqz.pl/Alpha/proj-one False"
+check "worktree: resolves from main" "$(cd "$tmp/one" && WORKLOG_CONFIG="$wcfg" bash "$RESOLVE" | ident)" "Alpha config proj-one raqz.pl/Alpha/proj-one False"
+before="$(sum "$wcfg")"
+rc=0; out="$(WORKLOG_CONFIG="$wcfg" bash "$ADD" project --world Alpha --name proj-one --repo "$tmp/one")" || rc=$?
+check "worktree then main: same repo, no change" "$rc $(sum "$wcfg") $(grep -c 'no change' <<<"$out")" "0 $before 1"
+
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }
