@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: GAPS
-verified_against: d56da34
+verified_against: 60792a3
 verified_on: 2026-09-28
 ---
 
@@ -62,15 +62,21 @@ says to fix that before onboarding [verified].
 formatting are lost on the first write [verified]. Two writers at once are not
 locked against each other; the last `os.replace` wins [inferred: no lock in the
 code]. Nothing stops an agent from editing the YAML by hand instead of using the
-script; that rule is prompt text only [verified].
+script; that rule is prompt text only [verified]. A `--repo` below a repo's top
+level is stored as given, and the resolver matches only the top level, so such
+an entry never routes [inferred: `scripts/resolve_context.py::find_project()`
+compares against `repo_root`, and `scripts/config_add.py::main_checkout()` keeps
+the subpath].
 
 ## Onboarding is prompt text
 
 The discovery, the question and the bootstrap in
 `skills/worklog-persist/SKILL.md::"## Onboarding (unresolved repo)"` are not
-run by any test [verified]. A session could skip the question, pass a worktree
-path instead of `repo_root`, or treat a non-world top-level document under
-`root_collection` as a world [inferred].
+run by any test [verified]. A session could skip the question or treat a
+non-world top-level document under `root_collection` as a world [inferred]. A
+worktree path passed instead of `repo_root` is harmless, because the writer maps
+it to the main checkout (`tests/test_config_add.sh::"worktree: resolves from main"`)
+[verified].
 
 ## Redaction coverage is a fixed rule list, not a guarantee
 

@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: CONTRACTS
-verified_against: d56da34
+verified_against: 60792a3
 verified_on: 2026-09-28
 ---
 
@@ -164,7 +164,12 @@ Behaviour [verified, from the code and `tests/test_config_add.sh`]:
 
 - A missing file and its parent dirs are created. Existing entries and keys are
   kept; YAML comments are not.
-- `repo` is stored as the resolved absolute path.
+- `repo` is stored as the resolved absolute path. A path in a linked git
+  worktree is stored as the same path in the main checkout
+  (`scripts/config_add.py::main_checkout()`, reusing
+  `scripts/resolve_context.py::canonical_repo()`), which is what the resolver
+  matches. A declare from the worktree and one from the main checkout are the
+  same entry.
 - The same entry again is a no-op: exit `0`, `no change` on stdout, file
   untouched.
 - A repo already declared differently (another world, name or `kb_folder`), a
@@ -176,7 +181,9 @@ Behaviour [verified, from the code and `tests/test_config_add.sh`]:
 - A world or project name that is empty or holds `/`, or a `--repo` that is not
   a directory: exit `2`, nothing written.
 - Writes go to a temp file in the same dir, then `os.replace`
-  (`scripts/config_add.py::write()`).
+  (`scripts/config_add.py::write()`). A symlinked config is written through:
+  the temp file and the replace happen next to the real target, so the link
+  stays a link and the target's mode is kept.
 
 enforcement: `tests/test_config_add.sh` (every bullet above except the mode
 copy and `fsync`, test suite only). The rule that an agent uses this script and
