@@ -1,7 +1,7 @@
 ---
 block: verification
 doc: README
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 owns: [tests/]
 depends_on: [packaging, session-hook, persistence-protocol]
@@ -25,11 +25,11 @@ reader needs, but the installer and registration targets are documented in
 
 ## What this block is
 
-Eight suites, seven of them offline. Five are plain shell scripts run with `bash`,
+Nine suites, eight of them offline. Six are plain shell scripts run with `bash`,
 not collected by `pytest`: `Makefile::"Not collected by pytest"` is the comment
 that explains why `make test` alone would miss them. [verified] Two are `pytest`
 modules: `tests/test_redact.py` and `tests/test_docs_layout.py`. [verified] The
-eighth, `tests/test_live_outline.sh`, is opt-in and touches a real network
+ninth, `tests/test_live_outline.sh`, is opt-in and touches a real network
 endpoint; it never runs as part of `Makefile::"Everything offline: both suites plus the structure check"`.
 [verified]
 
@@ -49,6 +49,7 @@ flowchart TD
         C[test_context.sh] --> RC["resolve-context.sh"]
         D[test_offswitch.sh] --> RD["persistence-state.sh + session-start.sh"]
         G[test_config_add.sh] --> RG["config-add.sh + resolve-context.sh"]
+        H[test_stop_guard.sh] --> RH["stop-guard.sh"]
         E[test_redact.py] --> RE["redact.py"]
         F[test_docs_layout.py] --> RF["docs/ tree vs CONVENTIONS.md"]
     end

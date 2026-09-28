@@ -45,6 +45,17 @@ check "old coupling ignored: KB_WORLD" \
   "$(cd "$tmp/myproj" && KB_WORLD=X bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
 check "old coupling ignored: KB_WORLD + KB_MANIFEST" \
   "$(cd "$tmp/myproj" && HOME="$tmp/home" KB_WORLD=X KB_MANIFEST="$tmp/home/.config/kb/worlds.yaml" bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
+# The old layout also had overlay manifests (worlds-*.yaml) next to the default
+# path. One there that declares this repo must be ignored too.
+mkdir -p "$tmp/home2/.config/kb"
+cat > "$tmp/home2/.config/kb/worlds-overlay.yaml" <<EOF
+worlds:
+  - name: Overlay
+    projects:
+      - {name: overlay-name, repo: $tmp/myproj}
+EOF
+check "old coupling ignored: overlay next to old default" \
+  "$(cd "$tmp/myproj" && HOME="$tmp/home2" bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
 # With WORKLOG_CONFIG unset the default is the plugin's own file under $HOME.
 check "default config path" "$(cd "$tmp/myproj" && env -u WORKLOG_CONFIG HOME="$tmp/home" bash "$SCRIPT" | field config_path)" \
   "$tmp/home/.config/worklog-persist/config.yaml"
@@ -132,6 +143,69 @@ check "unparseable config" "$(cd "$tmp/myproj" && WORKLOG_CONFIG="$tmp/garbage.y
 mkdir -p "$tmp/noyaml" && echo 'raise ImportError("stub")' > "$tmp/noyaml/yaml.py"
 check "no PyYAML" "$(cd "$tmp/myproj" && PYTHONPATH="$tmp/noyaml" WORKLOG_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"])')" \
   "E None config unreadable: PyYAML is not installed"
+
+# --- Path root: an undeclared repo takes the world whose declared repos it sits under ---
+# Own directory and own config, so the fixtures above do not add roots.
+cm="$tmp/cm"
+mkdir -p "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project" "$cm/y"
+for d in "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project" "$cm/y"; do
+  git -C "$d" init -q && git -C "$d" commit -q --allow-empty -m init
+done
+cm="$(cd "$cm" && pwd -P)"
+# WorldA's repos live under $cm/a (deep, narrow root); WorldB's directly under
+# $cm (shallow, broad root). WorldC declares one repo that sits inside B's root.
+cat > "$cm/config.yaml" <<EOF
+worlds:
+  - name: WorldA
+    projects:
+      - {name: x1, repo: $cm/a/x1}
+      - {name: x2, repo: $cm/a/x2}
+  - name: WorldB
+    projects:
+      - {name: b1, repo: $cm/b1}
+      - {name: b2, repo: $cm/b2}
+  - name: WorldC
+    projects:
+      - {name: exact-project, repo: $cm/exact-project}
+ignore:
+  - $cm/a/ignored-sub
+EOF
+pr() { python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["ignored"])'; }
+export WORKLOG_CONFIG="$cm/config.yaml"
+
+# The deepest root wins: under A's root beats B's broader one.
+check "path-root: deepest root wins" "$(cd "$cm/a/undeclared" && bash "$SCRIPT" | pr)" "WorldA path-root False"
+check "path-root: broader root" "$(cd "$cm/y" && bash "$SCRIPT" | pr)" "WorldB path-root False"
+# An exact declaration beats path root even inside another world's root.
+check "declaration beats path-root" "$(cd "$cm/exact-project" && bash "$SCRIPT" | pr)" "WorldC config False"
+# WORKLOG_WORLD is tier 2, so it beats path root.
+check "WORKLOG_WORLD beats path-root" "$(cd "$cm/a/undeclared" && WORKLOG_WORLD=E bash "$SCRIPT" | pr)" "E env False"
+# An ignored repo gets no world from path root, even inside a world's root.
+check "ignored beats path-root" "$(cd "$cm/a/ignored-sub" && bash "$SCRIPT" | pr)" "UNRESOLVED fallback True"
+# Outside every declared root nothing is inferred.
+mkdir -p "$tmp/cm-outside/proj" && git -C "$tmp/cm-outside/proj" init -q && git -C "$tmp/cm-outside/proj" commit -q --allow-empty -m init
+check "outside every root" "$(cd "$tmp/cm-outside/proj" && bash "$SCRIPT" | pr)" "UNRESOLVED fallback False"
+# Candidates come from the one config.
+check "candidate worlds from config" "$(cd "$cm/y" && bash "$SCRIPT" | python3 -c 'import sys,json;print(",".join(json.load(sys.stdin)["candidate_worlds"]))')" "WorldA,WorldB,WorldC"
+
+# Two different worlds tied at the same root depth are ambiguous, never guessed.
+tie="$tmp/tie"
+mkdir -p "$tie/shared/proj/sub"
+git -C "$tie/shared/proj/sub" init -q && git -C "$tie/shared/proj/sub" commit -q --allow-empty -m init
+cat > "$tie/config.yaml" <<EOF
+worlds:
+  - name: T1
+    projects:
+      - {name: t1, repo: $tie/shared/proj}
+  - name: T2
+    projects:
+      - {name: t2, repo: $tie/shared/proj}
+EOF
+check "equal-depth tie is ambiguous" "$(cd "$tie/shared/proj/sub" && WORKLOG_CONFIG="$tie/config.yaml" bash "$SCRIPT" | pr)" "UNRESOLVED fallback False"
+
+# A directory with no git repo at all resolves project "workspace", never its basename.
+mkdir -p "$tmp/not-a-repo"
+check "non-git project workspace" "$(cd "$tmp/not-a-repo" && WORKLOG_CONFIG="$tmp/none.yaml" bash "$SCRIPT" | field project)" "workspace"
 
 # Invariant: the resolver hardcodes no world name.
 if grep -nE "(STX|Inkitt|Kole)" "$ROOT/scripts/resolve_context.py"; then

@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: CONTRACTS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -79,12 +79,20 @@ these keys: `repo`, `repo_root`, `project`, `world`, `world_source`,
 - `project` is the config `name` of a declared repo, else the basename of the
   `origin` remote with `.git` stripped, else the main checkout directory name
   (`scripts/resolve_context.py::"remote", "get-url", "origin"`) [verified].
-- `world` comes from the config when the repo is declared there
-  (`world_source` = `config`), else from `$WORKLOG_WORLD` (`env`), else it is the
-  sentinel `UNRESOLVED` (`fallback`)
-  (`scripts/resolve_context.py::"WORKLOG_WORLD"`) [verified]. An ignored repo
-  never takes the env world [verified]. No other env var or file sets it
-  [verified].
+  Outside any git repo it is `workspace`
+  (`scripts/resolve_context.py::"workspace"`) [verified].
+- `world` has four tiers [verified]:
+  1. the repo is declared in the config (`world_source` = `config`);
+  2. `$WORKLOG_WORLD` (`env`, `scripts/resolve_context.py::"WORKLOG_WORLD"`);
+  3. path root (`path-root`): the config world whose declared repos' common
+     ancestor is the deepest ancestor-or-equal of this repo; a tie between two
+     different worlds at that depth gives nothing
+     (`scripts/resolve_context.py::path_root_world()`);
+  4. the sentinel `UNRESOLVED` (`fallback`).
+
+  An ignored repo takes no world from tiers 2 or 3 [verified]. No other env var
+  or file sets it: only the one config is read [verified].
+- `candidate_worlds` lists the world names declared in the config [verified].
 - `kb_path` is the config `kb_folder` when set, else
   `<root_collection>/<world>/<project>`, and `None` while the world is
   `UNRESOLVED` [verified]. `tasks_path` and `record_path` hang off it.
@@ -101,6 +109,10 @@ enforcement: `tests/test_context.sh::"WORKLOG_WORLD honored"`,
 `tests/test_context.sh::"config identity"`,
 `tests/test_context.sh::"worktree identity"`,
 `tests/test_context.sh::"ignored beats WORKLOG_WORLD"`,
+`tests/test_context.sh::"path-root: deepest root wins"`,
+`tests/test_context.sh::"equal-depth tie is ambiguous"`,
+`tests/test_context.sh::"ignored beats path-root"`,
+`tests/test_context.sh::"non-git project workspace"`,
 `tests/test_context.sh::"old coupling ignored"` and
 `tests/test_context.sh::"invalid slug rejected"` (test suite only, via
 `make check`, not on every invocation of the script).
@@ -175,7 +187,7 @@ never edits the YAML by hand is prompt text only
 
 ## Onboarding an unresolved repo
 
-When the resolver gives `UNRESOLVED`, not `ignored`, and `config_error` is empty
+When the resolver gives `UNRESOLVED` (so not a `path-root` match), not `ignored`, and `config_error` is empty
 or `config not found`, the skill runs its onboarding flow
 (`skills/worklog-persist/SKILL.md::"## Onboarding (unresolved repo)"`)
 [verified]. `/setup` runs the same flow (`commands/setup.md::"Onboarding"`)

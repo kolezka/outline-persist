@@ -1,7 +1,7 @@
 ---
 block: session-hook
 doc: OPERATIONS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -17,6 +17,16 @@ Claude Code's plugin loader runs `hooks/hooks.json`'s `SessionStart` command
 `[verified]`. There is no manual entry point for the hook itself; running
 `bash scripts/session-start.sh` directly reproduces exactly what the hook does,
 which is how `tests/test_offswitch.sh` checks it `[verified]`.
+
+## Stop guard
+
+Claude Code runs `bash ${CLAUDE_PLUGIN_ROOT}/scripts/stop-guard.sh` at the end of
+every turn (`hooks/hooks.json::"stop-guard.sh"`) `[verified]`. To test it by
+hand, pipe a Stop-hook JSON into it, as `tests/test_stop_guard.sh::input()` does.
+`WORKLOG_STOP_MIN_TOOLS` changes how many tool calls count as substantive
+`[verified]`. Its per-session markers live under
+`scripts/stop_guard.py::state_stop_dir()`, which resolves `XDG_STATE_HOME`, else
+`$HOME/.local/state`, then `worklog-persist/stop` `[verified]`.
 
 ## Checking status
 

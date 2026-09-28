@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: INVARIANTS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -58,13 +58,16 @@ their own document.
 
 ### 6. World comes from the plugin config, `$WORKLOG_WORLD` or a sentinel, never hardcoded
 
-`scripts/resolve_context.py::"WORKLOG_WORLD"` [verified]. No other env var or
-file feeds it. Defect prevented: the plugin's identity-resolution code naming
+`scripts/resolve_context.py::"WORKLOG_WORLD"` [verified]. Path root reads the
+same single config, never another file next to it
+(`scripts/resolve_context.py::world_repo_roots()`) [verified]. No other env var
+or file feeds it. Defect prevented: the plugin's identity-resolution code naming
 one operator's world, or picking one up from another tool's settings, which
 would make a session write to the wrong place with no visible cause.
 `tests/test_context.sh::"WORKLOG_WORLD honored"` exercises the override path and
-`tests/test_context.sh::"old coupling ignored"` proves the pre-0.3 names have no
-effect (test suite only) [verified].
+`tests/test_context.sh::"old coupling ignored"` proves the pre-0.3 names, and an
+overlay manifest next to the old default path, have no effect (test suite only)
+[verified].
 
 ### 7. Redaction does not rewrite text that was never secret-shaped
 
@@ -132,3 +135,11 @@ never caches them
 [verified]. Defect prevented: a stale or foreign list steering a repo into a
 world that does not exist for this operator. Convention only; no test drives
 the flow [verified].
+
+### 15. Path root never guesses between worlds
+
+`scripts/resolve_context.py::path_root_world()` returns nothing when two
+different worlds tie for the deepest root [verified]. Defect prevented: a repo
+in a shared parent dir landing in whichever world happened to be listed first.
+`tests/test_context.sh::"equal-depth tie is ambiguous"` covers it (test suite
+only) [verified].

@@ -7,8 +7,12 @@ from its `outline:` block, and a repo declared under `worlds[].projects[]` gets
 its world, project name and optional `kb_folder` from there. No world name is
 hardcoded. Only scripts/config_add.py writes that file.
 
-World precedence: config match, then $WORKLOG_WORLD, then "UNRESOLVED" (the
-caller asks the operator once). Usage: resolve_context.py [task-slug]
+World precedence: (1) a project declared in the config; (2) $WORKLOG_WORLD;
+(3) path root: the config world whose declared repos' common ancestor is the
+deepest ancestor-or-equal of this repo (a tie between different worlds at that
+depth stays unresolved); (4) "UNRESOLVED", which the caller turns into the
+onboarding flow. An ignored repo gets no world from tiers 2 or 3. Outside any git
+repo the project is "workspace". Usage: resolve_context.py [task-slug]
 """
 import json
 import os
@@ -105,6 +109,44 @@ def find_project(config, repo):
     return None, None
 
 
+def world_repo_roots(config):
+    """{world name: common ancestor of its declared, expanded repo paths}.
+
+    A world with no repos contributes no root.
+    """
+    repos_by_world = {}
+    for w in config.get("worlds") or []:
+        name = w.get("name")
+        if not name:
+            continue
+        for p in w.get("projects") or []:
+            rp = expand(p.get("repo")) if p.get("repo") else None
+            if rp:
+                repos_by_world.setdefault(name, []).append(rp)
+    roots = {}
+    for name, paths in repos_by_world.items():
+        try:
+            roots[name] = Path(os.path.commonpath([str(p) for p in paths]))
+        except ValueError:
+            continue  # e.g. paths on different drives; not a usable root
+    return roots
+
+
+def path_root_world(roots, target):
+    """The world whose root is the deepest ancestor-or-equal of `target`.
+
+    None both when nothing qualifies and when two or more different worlds tie
+    for the deepest match: ambiguous, so it is never guessed.
+    """
+    matches = [(len(root.parts), name) for name, root in roots.items()
+               if root == target or root in target.parents]
+    if not matches:
+        return None
+    best_depth = max(depth for depth, _name in matches)
+    tied = {name for depth, name in matches if depth == best_depth}
+    return tied.pop() if len(tied) == 1 else None
+
+
 def main(argv):
     slug = argv[1] if len(argv) > 1 else ""
     if slug and not SLUG_RE.match(slug):
@@ -114,6 +156,7 @@ def main(argv):
 
     cwd = Path.cwd()
     worktree, repo_root = canonical_repo(cwd)
+    is_git = worktree is not None
     if worktree:
         branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=worktree) or "UNKNOWN"
         remote = git("remote", "get-url", "origin", cwd=worktree)
@@ -129,7 +172,8 @@ def main(argv):
         outline.update({k: v for k, v in (config.get("outline") or {}).items()
                         if k in DEFAULT_OUTLINE and v})
 
-    world, project, kb_folder, source = None, repo, None, "fallback"
+    # Outside git the directory name says nothing stable about the work.
+    world, project, kb_folder, source = None, repo if is_git else "workspace", None, "fallback"
     ignored = False
     if config:
         w, p = find_project(config, repo_root)
@@ -137,9 +181,14 @@ def main(argv):
             world, project, kb_folder, source = w, p.get("name") or repo, p.get("kb_folder"), "config"
         ignored = any(i and (i == repo_root or i in repo_root.parents)
                       for i in map(expand, config.get("ignore") or []))
-    # An ignored repo has no Outline folder by operator decision; env must not add one.
+    # An ignored repo has no Outline folder by operator decision; inference (env,
+    # path root) must not add one.
     if not world and not ignored and os.environ.get("WORKLOG_WORLD"):
         world, source = os.environ["WORKLOG_WORLD"], "env"
+    if not world and not ignored and config:
+        w = path_root_world(world_repo_roots(config), repo_root)
+        if w:
+            world, source = w, "path-root"
     world = world or UNRESOLVED
 
     root = outline["root_collection"]

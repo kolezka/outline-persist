@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: OPERATIONS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -38,7 +38,8 @@ Run as `scripts/resolve-context.sh [task-slug]`
 (`scripts/resolve_context.py::"Usage: resolve_context.py [task-slug]"`)
 [verified]. It resolves `repo`, `project`, `branch` and `worktree` from git, then
 looks the main checkout up in the plugin config, then falls back to
-`$WORKLOG_WORLD`, then to the `UNRESOLVED` sentinel. Full field-by-field
+`$WORKLOG_WORLD`, then to path root (the config world whose repos it sits
+under), then to the `UNRESOLVED` sentinel. Full field-by-field
 contract: [`CONTRACTS.md`](CONTRACTS.md). It writes nothing to disk; it only
 prints JSON to stdout. There is no cache and no local record of a previously
 resolved identity, so every command re-resolves it fresh [verified].

@@ -57,13 +57,14 @@ JSON. Use its paths as given; never rebuild them by hand.
 
 | Field | Meaning |
 |---|---|
-| `world`, `project` | From the plugin config when the repo is declared there |
-| `world_source` | `config`, `env` (`$WORKLOG_WORLD`) or `fallback` |
+| `world`, `project` | From the plugin config when the repo is declared there, else inferred |
+| `world_source` | `config`, `env` (`$WORKLOG_WORLD`), `path-root` or `fallback` |
 | `kb_path` | Project folder in Outline (`kb_folder` override, else `<root>/<World>/<project>`) |
 | `tasks_path`, `record_path` | `<kb_path>/Tasks` and `<kb_path>/Tasks/<slug>` |
 | `root_collection`, `global_collection`, `archive_collection` | From the config `outline:` block |
 | `repo_root`, `worktree`, `branch` | `repo_root` is the main checkout, also from a linked worktree |
 | `ignored` | The config lists this repo, or a parent dir, under `ignore` |
+| `candidate_worlds` | The world names declared in the config |
 | `config`, `config_error` | Which config was read, or why none was |
 | `config_path` | Where the config is looked for, also when it does not exist |
 
@@ -73,12 +74,20 @@ The config is this plugin's own YAML file: `$WORKLOG_CONFIG`, else
 context. That is intended. Never edit the file by hand: add entries only with
 `config-add.sh` (see Onboarding).
 
-- **World** is never hardcoded. Precedence: config match, then `$WORKLOG_WORLD`, then
-  `UNRESOLVED`. On `UNRESOLVED`, run Onboarding (below) before any other work. Do
-  not write anything to Outline until the world is known.
+- **World** is never hardcoded. Precedence: (1) the repo is declared in the
+  config (`world_source` `config`); (2) `$WORKLOG_WORLD` (`env`); (3) path root:
+  the config world whose declared repos' common ancestor is the deepest
+  ancestor-or-equal of this repo (`path-root`; a tie between two different worlds
+  at that depth stays unresolved, never guessed); (4) `UNRESOLVED`. An ignored
+  repo gets no world from tiers 2 or 3. On `UNRESOLVED`, run Onboarding (below)
+  before any other work. Do not write anything to Outline until the world is
+  known. A `path-root` world is resolved, not a guess to confirm; if the operator
+  says it is wrong, run `/setup` to declare the repo.
 - **Project** is the config `name` when declared (it can differ from the repo
   name), else the basename of `git remote get-url origin`, else the main checkout
-  directory name. A worktree directory name is never the project.
+  directory name. A worktree directory name is never the project. When the current
+  directory is not a git repo at all, project is `workspace`, never the directory's
+  basename.
 - **Ignored repo**: the operator decided it has no Outline folder. Do not bootstrap
   one. Ask before writing anything for it.
 - **Task slug**: lowercase kebab-case, shared across `Specs`/`Plans`/`Tasks`.
@@ -217,8 +226,19 @@ change updates that flag. If the parent is missing, report the record as orphane
 - **dry-run** — show the intended read or write (target collection/folder/doc, the
   fields, the redacted body) without calling any write tool.
 - **off** — `bash ${CLAUDE_PLUGIN_ROOT}/scripts/persistence-state.sh off` disables the
-  automatic SessionStart rule without removing the plugin; `... on` re-enables.
+  automatic SessionStart rule and the Stop guard below without removing the plugin;
+  `... on` re-enables both.
 - **setup** — run Onboarding (above) for the current repo.
+
+A `Stop` hook (`scripts/stop-guard.sh`) also runs when a turn ends. If substantive
+work (edits, a commit/push/PR, or a long run of tool calls) happened since the last
+Outline write in the transcript, it blocks the stop once and asks the model to run
+this skill (checkpoint, handoff or complete) before finishing. For an unresolved
+repo it asks for Onboarding (`/setup`) first. It never blocks twice in a row, it
+never blocks for an ignored repo, and it never fires when persistence is off. A
+decline ("trivial, stopping") is remembered per session, so the same already-shown
+work is not blocked again on the next turn; only new work after the decline
+triggers another block.
 
 ## When to write vs. not
 

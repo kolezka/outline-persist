@@ -46,6 +46,15 @@ check "no onboarding when ignored" "$(hook "$ignored" | ctx 'no Outline folder' 
 broken="$XDG_STATE_HOME/broken.yaml"
 printf 'worlds: 3\n' > "$broken"
 check "no onboarding when config broken" "$(hook "$broken" | ctx 'config malformed' 'Fix the config file')" "False True True"
+# An undeclared repo that sits under a declared world's repos resolves by path
+# root, so it is resolved: no onboarding.
+ws="$XDG_STATE_HOME/ws"
+for d in p1 p2 newrepo; do mkdir -p "$ws/$d" && git -C "$ws/$d" init -q; done
+ws="$(cd "$ws" && pwd -P)"
+pathroot="$XDG_STATE_HOME/pathroot.yaml"
+printf 'worlds:\n  - name: Alpha\n    projects:\n      - {name: p1, repo: %s}\n      - {name: p2, repo: %s}\n' "$ws/p1" "$ws/p2" > "$pathroot"
+check "no onboarding when resolved by path-root" \
+  "$(cd "$ws/newrepo" && WORKLOG_WORLD='' WORKLOG_CONFIG="$pathroot" bash "$ROOT/scripts/session-start.sh" | ctx 'world `Alpha`' '@@none@@')" "False True False"
 # The base reminder text is unchanged in every case.
 check "base rule kept when onboarding" "$(hook /nonexistent | ctx 'Outline (MCP server `outline`) is this session' '@@none@@')" "True True False"
 

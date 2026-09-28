@@ -1,7 +1,7 @@
 ---
 block: session-hook
 doc: CONTRACTS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -12,16 +12,18 @@ for the `enforcement:` field format.
 
 ## `hooks/hooks.json` shape
 
-### The manifest wraps SessionStart in `{"hooks": {"SessionStart": [...]}}`
+### The manifest wraps each event in `{"hooks": {"<Event>": [...]}}`
 
 Claude Code's plugin loader expects a top-level `hooks` object keyed by event
 name, each value a list of `{matcher, hooks: [...]}` entries `[verified]`. The
-file at the pin has exactly one `SessionStart` entry with `matcher: "*"` and one
-command hook (`hooks/hooks.json::"matcher"`) `[verified]`.
+file has exactly one `SessionStart` entry and one `Stop` entry, each with
+`matcher: "*"` and one command hook (`hooks/hooks.json::"matcher"`,
+`hooks/hooks.json::"stop-guard.sh"`) `[verified]`.
 
 enforcement: `tests/test_structure.sh::"hooks.json missing wrapped SessionStart"`
-  (fails the suite if `hooks['hooks']['SessionStart']` cannot be indexed) and
-  `install.sh::check_structure()` at `--check` time only.
+  and `tests/test_structure.sh::"hooks.json missing wrapped Stop"` (test suite);
+  `install.sh::check_structure()` checks only `SessionStart`, at `--check` time
+  `[verified]`.
 
 ### The command line uses `${CLAUDE_PLUGIN_ROOT}`, never a literal path
 
@@ -158,3 +160,38 @@ warning rather than claiming success
 enforcement: `tests/test_offswitch.sh::"env override status"` and
   `tests/test_offswitch.sh::"env override silences hook"`, run-time checks in
   the offline suite.
+
+## `scripts/stop-guard.sh` output contract
+
+### Prints `{"decision":"block","reason":...}` or nothing, always exit `0`
+
+Input is the Stop-hook JSON on stdin (`session_id`, `transcript_path`, `cwd`,
+`stop_hook_active`). Output is one block decision or no bytes. Any internal
+error allows the stop (`scripts/stop_guard.py::main()`, and the wrapper's
+`scripts/stop-guard.sh::"exit 0"`) `[verified]`.
+
+enforcement: `tests/test_stop_guard.sh` (test suite only).
+
+### When it blocks
+
+It blocks when the non-sidechain tool calls after the later of the last Outline
+write and the session marker are substantive: an `Edit`/`Write`/`NotebookEdit`,
+a `git commit`/`push` or `gh pr create`, or at least `WORKLOG_STOP_MIN_TOOLS`
+calls (default `scripts/stop_guard.py::DEFAULT_MIN_TOOLS`)
+(`scripts/stop_guard.py::is_substantive()`) `[verified]`. It never blocks when
+`stop_hook_active` is set, when persistence is off, or for an ignored repo
+(`scripts/stop_guard.py::run()`) `[verified]`.
+
+enforcement: `tests/test_stop_guard.sh` (test suite only).
+
+### The reason names the resolved context, or sends the model to `/setup`
+
+`scripts/stop_guard.py::build_reason()` names world, project and tasks path for
+a resolved repo, notes when the world came from path root, points an
+`UNRESOLVED` repo to the onboarding flow
+(`scripts/stop_guard.py::"Run the onboarding flow"`), and makes no world claim
+when the resolver itself failed `[verified]`.
+
+enforcement: `tests/test_stop_guard.sh::"unresolved: reason points to /setup"`
+  and `tests/test_stop_guard.sh::"resolve-context failure: no world claim in reason"`
+  (test suite only).

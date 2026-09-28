@@ -1,7 +1,7 @@
 ---
 block: verification
 doc: CONTRACTS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -29,7 +29,8 @@ enforcement: `Makefile::test` (target definition)
 `make test-sh` loops over `tests/*.sh` and runs each with `bash`, failing the
 target if any suite fails. [verified] This is the only `Makefile` target that runs
 `tests/test_structure.sh`, `tests/test_install.sh`, `tests/test_context.sh`,
-`tests/test_config_add.sh` and `tests/test_offswitch.sh`. [inferred, from the glob and the absence of another
+`tests/test_config_add.sh`, `tests/test_offswitch.sh` and
+`tests/test_stop_guard.sh`. [inferred, from the glob and the absence of another
 loop over `tests/*.sh` in `Makefile`]
 
 enforcement: `Makefile::test-sh`

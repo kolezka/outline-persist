@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: DECISIONS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -124,3 +124,17 @@ locked in by
 The alternative that lost: keeping a single hardcoded prefix and requiring
 every installation to also register a user- or project-scope `outline` server
 just so the old string would resolve.
+
+## Path root kept, overlay discovery dropped
+
+[historical: 2026-09-28, merge of the Stop guard branch] Master added two
+inference tiers: a scan of every `worlds*.yaml` next to the active manifest, and
+path root. This plugin keeps path root, computed over its one config
+(`scripts/resolve_context.py::world_repo_roots()`), because it places a repo by
+where it lives, with no second file [verified]. It drops the overlay scan and
+the output key naming the matched file: that is the old shared-manifest layout, and
+reading neighbour files would bring back the coupling this plugin cut [inferred].
+The resulting order is config, `$WORKLOG_WORLD`, path root, `UNRESOLVED`.
+`$WORKLOG_WORLD` sits above path root, as the old env var sat above it on master
+[verified]. `tests/test_context.sh::"old coupling ignored"` includes an overlay
+file, so the scan cannot quietly return [verified].

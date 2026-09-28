@@ -1,9 +1,9 @@
 ---
 block: session-hook
 doc: README
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
-owns: [hooks/, scripts/session-start.sh, scripts/persistence-state.sh]
+owns: [hooks/, scripts/session-start.sh, scripts/persistence-state.sh, scripts/stop-guard.sh, scripts/stop_guard.py]
 depends_on: [packaging, persistence-protocol]
 ---
 
@@ -16,11 +16,14 @@ block fits the rest of the plugin.
 
 ## What this block is
 
-Three files. `hooks/hooks.json` wires the plugin into Claude Code's `SessionStart`
-lifecycle event `[verified]`. `scripts/session-start.sh` is the command that event
-runs; it prints one line of JSON carrying the reminder text, or nothing at all
+Five files. `hooks/hooks.json` wires the plugin into Claude Code's `SessionStart`
+and `Stop` events `[verified]`. `scripts/session-start.sh` is the SessionStart
+command; it prints one line of JSON carrying the reminder text, or nothing at all
+`[verified]`. `scripts/stop-guard.sh` is the Stop command, a thin wrapper around
+`scripts/stop_guard.py`: when substantive work happened since the last Outline
+write, it blocks the stop once and asks for a checkpoint, handoff or completion
 `[verified]`. `scripts/persistence-state.sh` owns the single on/off marker file
-that decides which of those two outcomes happens `[verified]`.
+that silences both hooks `[verified]`.
 
 The hook never calls Outline and never calls an MCP tool. It only emits static
 text that names the MCP server `[verified]`; resolving which tool prefix actually
@@ -50,6 +53,8 @@ This block does not own:
 | `hooks/hooks.json` | Registers `scripts/session-start.sh` against the `SessionStart` event `[verified]` |
 | `scripts/session-start.sh` | Reads the off state, then emits `hookSpecificOutput.additionalContext` JSON or nothing `[verified]` |
 | `scripts/persistence-state.sh` | Resolves the state directory, and implements `path`, `status`, `off`, `on` `[verified]` |
+| `scripts/stop-guard.sh` | Stop hook wrapper; always exits `0` `[verified]` |
+| `scripts/stop_guard.py` | Reads the transcript, decides whether to block, keeps a per-session marker `[verified]` |
 
 ## Why it depends on packaging and persistence-protocol
 
@@ -76,6 +81,10 @@ flowchart TD
     EnvVar["WORKLOG_HOOK_OFF=1"] -.-> State
     OffCmd["/off (persistence-protocol)"] -.-> State
     Disable["claude plugin disable (packaging)"] -.-> Hook
+    StopEvent["Claude Code Stop event"] --> Hook
+    Hook -->|"bash stop-guard.sh"| Guard["scripts/stop_guard.py"]
+    Guard -->|"status"| State
+    Guard -->|"substantive, unpersisted"| Block["decision: block, once"]
 ```
 
 The two dotted paths cross out of this block: the env var is set by whoever runs

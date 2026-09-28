@@ -80,8 +80,9 @@ WORKLOG_HOOK_OFF=1                            # env override forces off
 ./install.sh --apply --uninstall
 ```
 
-When disabled, the SessionStart hook stops injecting the durable-memory rule and
-no automatic writes happen. The manual commands still work.
+When disabled, the SessionStart hook stops injecting the durable-memory rule, the
+Stop hook stops blocking unpersisted turns, and no automatic writes happen. The
+manual commands still work.
 
 ## Commands
 
@@ -139,8 +140,12 @@ ignore:
 - A repo declared under `worlds[].projects[]` gets its world, project name and
   optional `kb_folder` from the config. A linked git worktree resolves to its
   main checkout first, so it maps to the same project.
-- An undeclared repo uses `$WORKLOG_WORLD`, else the world stays `UNRESOLVED`.
-  A repo under `ignore`, or below an ignored dir, gets no world and no folder.
+- An undeclared repo uses `$WORKLOG_WORLD`, then path root: the config world
+  whose own declared repos are the deepest ancestor-or-equal of this one (a tie
+  between two different worlds is left unresolved, never guessed). Otherwise the
+  world stays `UNRESOLVED` and the agent runs onboarding. A repo under `ignore`,
+  or below an ignored dir, gets no world and no folder, from any of these.
+- Outside any git repo the project is `workspace`, never the directory name.
 - Records live at `<kb_path>/Tasks/<task-slug>`, where `kb_path` is `kb_folder` or
   `<root_collection>/<World>/<project>`. Ticket slugs (`AD-163-uat-checklist`)
   are accepted.

@@ -99,3 +99,10 @@ Observed machine state: old `outline-persist@<marketplace>` plugin is still inst
 - [x] `scripts/config-add.sh` (+ `config_add.py`): `project` and `ignore` subcommands; creates the file, keeps entries, idempotent, refuses conflicts and unparseable files, atomic replace. `tests/test_config_add.sh` red then green.
 - [x] Hook: unresolved repo (config missing or repo not declared) gets an onboarding instruction with cause and config path; a broken config gets "fix it first". Base reminder unchanged. Hook cases red then green.
 - [x] Skill: Onboarding section (worlds read live from Outline, one question, write via the script, bootstrap, confirm). New `/setup` command; install.sh --check and test_structure now expect 8 commands.
+
+### Merge of master (Stop guard, #6)
+
+- [x] Kept: Stop guard (hooks.json, stop-guard.sh, stop_guard.py, test_stop_guard.sh), non-git `workspace` project, path-root tier over the one config.
+- [x] Dropped: sibling `worlds*.yaml` scan and its output key. Precedence is config, `WORKLOG_WORLD`, path root, `UNRESOLVED` (onboarding).
+- [x] Stop guard sends an unresolved repo to `/setup`. New tests: overlay manifest ignored, path-root repo gets no onboarding, stop reason points to `/setup`.
+

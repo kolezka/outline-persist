@@ -9,8 +9,8 @@ Toggle automatic persistence for worklog-persist.
 - Re-enable: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/persistence-state.sh on`
 - Status: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/persistence-state.sh status`
 
-When off, the SessionStart hook stops injecting the durable-memory rule and no
-automatic writes happen. The plugin stays installed; the manual commands still
+When off, the SessionStart hook stops injecting the durable-memory rule, the
+Stop guard stops blocking, and no automatic writes happen. The plugin stays installed; the manual commands still
 work. `WORKLOG_HOOK_OFF=1` in the environment also forces off.
 
 Run the requested toggle and report the new status.

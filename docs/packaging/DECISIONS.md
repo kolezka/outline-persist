@@ -1,7 +1,7 @@
 ---
 block: packaging
 doc: DECISIONS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 

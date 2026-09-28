@@ -1,7 +1,7 @@
 ---
 block: session-hook
 doc: INVARIANTS
-verified_against: 0c53b51
+verified_against: f54b323
 verified_on: 2026-09-28
 ---
 
@@ -51,3 +51,19 @@ check for that lives in the skill, not here
 config or marketplace lookup `[verified]`. This keeps the off switch usable even
 when the plugin is not correctly registered with the `claude` CLI, since it does
 not depend on anything `packaging` manages `[inferred]`.
+
+## 5. The Stop guard never traps a session
+
+`scripts/stop_guard.py::run()` returns nothing when `stop_hook_active` is set,
+and records the last tool call it blocked for, so the same work is never blocked
+twice (`scripts/stop_guard.py::write_marker()`) `[verified]`. Any exception
+allows the stop `[verified]`. Defect prevented: a turn that can never end, or a
+decline ("trivial, stopping") re-blocked on every later turn.
+`tests/test_stop_guard.sh` covers both (test suite only) `[verified]`.
+
+## 6. The off switch silences both hooks
+
+`scripts/stop_guard.py::persistence_is_off()` asks
+`scripts/persistence-state.sh` the same question `session-start.sh` does
+`[verified]`. Defect prevented: `/off` quieting the reminder while the Stop hook
+keeps demanding writes.
