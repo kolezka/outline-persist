@@ -144,4 +144,9 @@ check "stale worktree ignore: declare refused" "$([ "$rc" != 0 ] && echo yes) $(
 rc=0; WORKLOG_CONFIG="$icfg" bash "$ADD" ignore --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
 check "stale worktree ignore: same entry rewritten" "$rc $(python3 -c 'import sys,yaml;print(*yaml.safe_load(open(sys.argv[1]))["ignore"])' "$icfg")" "0 $one"
 
+# 16. A worktree subdir missing from the main checkout is refused, not stored.
+mkdir -p "$tmp/one-wt/only-wt"
+rc=0; err="$(WORKLOG_CONFIG="$tmp/sub.yaml" bash "$ADD" ignore --repo "$tmp/one-wt/only-wt" 2>&1 >/dev/null)" || rc=$?
+check "worktree-only subdir: refused cleanly" "$rc $(grep -c '^config-add:' <<<"$err") $(sum "$tmp/sub.yaml")" "2 1 absent"
+
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }

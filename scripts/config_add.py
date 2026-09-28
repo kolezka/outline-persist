@@ -181,6 +181,10 @@ def main(argv):
     except Refused as e:
         print(f"config-add: {e}", file=sys.stderr)
         return 2
+    if not repo.is_dir():
+        print(f"config-add: {args.repo} maps to {repo} in the main checkout, which is not "
+              "a directory; nothing written", file=sys.stderr)
+        return 2
     try:
         import yaml
     except ImportError:
