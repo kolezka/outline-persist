@@ -1,7 +1,7 @@
 ---
 block: packaging
 doc: INVARIANTS
-verified_against: d56da34
+verified_against: 0fd923b
 verified_on: 2026-09-28
 ---
 

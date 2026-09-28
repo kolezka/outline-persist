@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: INVARIANTS
-verified_against: d56da34
+verified_against: 0fd923b
 verified_on: 2026-09-28
 ---
 
@@ -120,12 +120,24 @@ byte-identical (test suite only) [verified].
 ### 13. The config writer is idempotent and never moves a repo
 
 The same entry twice leaves the file untouched; a repo declared under another
-world is refused (`scripts/config_add.py::add_project()`) [verified]. Defect
+world is refused (`scripts/config_add.py::add_project()`) [verified]. Stored
+paths are compared as their main checkout, so this holds for entries an older
+version stored under a worktree path or in another case. Declared again
+unchanged, such an entry is rewritten once to the canonical path so it routes,
+or dropped when an entry with that path already exists, so the same repo never
+appears twice (`scripts/config_add.py::add_ignore()` does the same for
+`ignore`) [verified]. Defect
 prevented: duplicate entries where the first match wins, or records for one
 project silently starting to land in another world's folder.
-`tests/test_config_add.sh::"idempotent re-add: byte-identical"` and
-`tests/test_config_add.sh::"conflict: file untouched"` cover it (test suite
-only) [verified].
+`tests/test_config_add.sh::"idempotent re-add: byte-identical"`,
+`tests/test_config_add.sh::"conflict: file untouched"`,
+`tests/test_config_add.sh::"stale worktree entry: other world refused"`,
+`tests/test_config_add.sh::"stale worktree entry: same entry rewritten"`,
+`tests/test_config_add.sh::"stale beside canonical project: one entry left"`,
+`tests/test_config_add.sh::"stale beside canonical ignore: one entry left"` and
+`tests/test_config_add.sh::"stale case entry: other world refused"` cover it
+(test suite only; the case test runs only on a case-insensitive disk)
+[verified].
 
 ### 14. World names come from Outline or the user, never from the plugin
 

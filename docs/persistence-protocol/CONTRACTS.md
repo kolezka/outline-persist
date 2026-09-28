@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: CONTRACTS
-verified_against: d56da34
+verified_against: 0fd923b
 verified_on: 2026-09-28
 ---
 
@@ -164,22 +164,48 @@ Behaviour [verified, from the code and `tests/test_config_add.sh`]:
 
 - A missing file and its parent dirs are created. Existing entries and keys are
   kept; YAML comments are not.
-- `repo` is stored as the resolved absolute path.
+- `repo` is stored as the resolved absolute path. A path in a linked git
+  worktree is stored as the same path in the main checkout
+  (`scripts/config_add.py::main_checkout()`, reusing
+  `scripts/resolve_context.py::canonical_repo()`), which is what the resolver
+  matches. A declare from the worktree and one from the main checkout are the
+  same entry. The top level is found with `os.path.samefile`, so on a
+  case-insensitive disk a path typed in another case has its git top level
+  stored in the on-disk case; a subpath below the top level keeps the case it
+  was typed in. A path that cannot be related to its top level is refused with exit `2`. With
+  no `git` binary the path is stored as given.
+- Stored repo paths (projects and `ignore`) are compared through the same
+  mapping (`scripts/config_add.py::canonical()`), so an entry an older version
+  stored under a worktree path, or in another case, still counts as that repo.
+  Git runs only for a stored path inside a linked worktree or spelled in
+  another case than the disk holds (`scripts/config_add.py::needs_mapping()`);
+  any other path already is its main checkout.
 - The same entry again is a no-op: exit `0`, `no change` on stdout, file
-  untouched.
+  untouched. The exception: when the stored spelling differs from the
+  canonical path (a worktree path, or another case on a case-insensitive
+  disk), the entry is rewritten to the canonical path, because the resolver
+  never matches the old spelling. If an entry with the canonical path already
+  exists, the other spellings are dropped instead, so no entry is duplicated.
+  The same holds for `ignore` entries.
 - A repo already declared differently (another world, name or `kb_folder`), a
   declared repo passed to `ignore`, or an ignored repo passed to `project`:
   exit `1`, nothing written.
 - A file that does not parse or fails `scripts/resolve_context.py::shape_error()`:
   exit `1`, file left byte-identical.
 - No PyYAML: exit `1`, nothing written.
-- A world or project name that is empty or holds `/`, or a `--repo` that is not
-  a directory: exit `2`, nothing written.
+- A world or project name that is empty or holds `/`, a `--repo` that is not
+  a directory, or a worktree subdir that does not exist in the main checkout:
+  exit `2`, nothing written.
 - Writes go to a temp file in the same dir, then `os.replace`
-  (`scripts/config_add.py::write()`).
+  (`scripts/config_add.py::write()`). A symlinked config, or a chain of
+  symlinks, is written through: the temp file and the replace happen next to
+  the real target, so the link stays a link and the target's mode is kept. A
+  symlink loop is not detected; see [GAPS](GAPS.md).
 
-enforcement: `tests/test_config_add.sh` (every bullet above except the mode
-copy and `fsync`, test suite only). The rule that an agent uses this script and
+enforcement: `tests/test_config_add.sh` (every bullet above, test suite only,
+except `fsync`, the symlink chain and the refusal of a path that cannot be
+related to its top level, which no test covers; the case-insensitive case runs
+only on a case-insensitive disk). The rule that an agent uses this script and
 never edits the YAML by hand is prompt text only
 (`skills/worklog-persist/SKILL.md::"never by editing the YAML"`): convention.
 

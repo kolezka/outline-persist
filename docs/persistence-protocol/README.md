@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: README
-verified_against: d56da34
+verified_against: 0fd923b
 verified_on: 2026-09-28
 owns: [skills/, commands/, scripts/resolve-context.sh, scripts/resolve_context.py, scripts/config-add.sh, scripts/config_add.py, scripts/redact.py]
 depends_on: [packaging]
