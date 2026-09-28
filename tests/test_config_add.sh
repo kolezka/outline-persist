@@ -150,4 +150,14 @@ mkdir -p "$tmp/one-wt/only-wt"
 rc=0; err="$(WORKLOG_CONFIG="$tmp/sub.yaml" bash "$ADD" ignore --repo "$tmp/one-wt/only-wt" 2>&1 >/dev/null)" || rc=$?
 check "worktree-only subdir: refused cleanly" "$rc $(grep -c '^config-add:' <<<"$err") $(sum "$tmp/sub.yaml")" "2 1 absent"
 
+# 17. A stale worktree entry next to the canonical one is dropped, never duplicated.
+dcfg="$tmp/dup.yaml"
+printf 'worlds:\n  - name: A\n    projects:\n      - {name: p, repo: %s}\n      - {name: p, repo: %s}\n' "$wt" "$one" > "$dcfg"
+rc=0; WORKLOG_CONFIG="$dcfg" bash "$ADD" project --world A --name p --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
+check "stale beside canonical project: one entry left" "$rc $(repos "$dcfg")" "0 $one"
+dicfg="$tmp/dup-ignore.yaml"
+printf 'ignore:\n  - %s\n  - %s\n' "$wt" "$one" > "$dicfg"
+rc=0; WORKLOG_CONFIG="$dicfg" bash "$ADD" ignore --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
+check "stale beside canonical ignore: one entry left" "$rc $(python3 -c 'import sys,yaml;print(*yaml.safe_load(open(sys.argv[1]))["ignore"])' "$dicfg")" "0 $one"
+
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }

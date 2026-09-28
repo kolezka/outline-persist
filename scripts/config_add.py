@@ -13,9 +13,10 @@ move. A file that cannot be parsed, or has the wrong shape, is never rewritten.
 Writes go to a temp file in the same dir, then replace the config in one step.
 A symlinked config is written through: the link stays, its target is replaced.
 A repo path in a linked git worktree is stored as its main checkout, the path
-the resolver matches. Stored paths are compared the same way; the same entry
-stored under a worktree path by an older version is rewritten to the main
-checkout.
+the resolver matches. Stored paths are compared the same way. When the same
+entry is stored under another spelling (a worktree path, or another case on a
+case-insensitive disk), it is rewritten to the canonical path, or dropped when
+an entry with that path already exists.
 
 Exit codes: 0 written or no change, 1 refused, 2 bad arguments.
 """
@@ -92,15 +93,27 @@ def ignored_by(data, repo):
 
 
 def add_project(data, world, name, repo, kb_folder):
+    same = []
     for w, p, r in declared(data):
-        if r == repo:
-            if w == world and p.get("name") == name and p.get("kb_folder") == kb_folder:
-                if expand(p.get("repo")) != repo:
-                    p["repo"] = str(repo)
-                    return f"updated project {name!r} in world {world!r} to repo {repo}"
-                return None
+        if r != repo:
+            continue
+        if not (w == world and p.get("name") == name and p.get("kb_folder") == kb_folder):
             raise Refused(f"{repo} is already declared as world {w!r}, project "
                           f"{p.get('name')!r}; ask the operator, nothing changed")
+        same.append(p)
+    if same:
+        # Keep one entry spelled as the canonical path: drop older spellings, or rewrite the only one.
+        keep = next((p for p in same if expand(p.get("repo")) == repo), None)
+        stale = [p for p in same if p is not keep]
+        if not stale:
+            return None
+        if keep is None:
+            keep = stale.pop(0)
+            keep["repo"] = str(repo)
+        for w in data.get("worlds") or []:
+            if w.get("projects"):
+                w["projects"] = [p for p in w["projects"] if all(p is not x for x in stale)]
+        return f"kept one entry for project {name!r} in world {world!r} at {repo}"
     entry = ignored_by(data, repo)
     if entry:
         raise Refused(f"{repo} is ignored (by {entry!r}); ask the operator, nothing changed")
@@ -122,10 +135,15 @@ def add_project(data, world, name, repo, kb_folder):
 
 def add_ignore(data, repo):
     entries = data.get("ignore") or []
-    for n, entry in enumerate(entries):
-        if canonical(entry) == repo and expand(entry) != repo:
-            entries[n] = str(repo)
-            return f"updated ignore entry {entry!r} to {repo}"
+    same = [n for n, entry in enumerate(entries) if canonical(entry) == repo]
+    keep = next((n for n in same if expand(entries[n]) == repo), None)
+    stale = [n for n in same if n != keep]
+    if stale:
+        if keep is None:
+            keep = stale.pop(0)
+            entries[keep] = str(repo)
+        data["ignore"] = [e for n, e in enumerate(entries) if n not in stale]
+        return f"kept one ignore entry for {repo}"
     if ignored_by(data, repo):
         return None
     for w, p, r in declared(data):
