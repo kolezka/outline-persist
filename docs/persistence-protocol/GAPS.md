@@ -1,7 +1,7 @@
 ---
 block: persistence-protocol
 doc: GAPS
-verified_against: 1528101
+verified_against: 0fd923b
 verified_on: 2026-09-28
 ---
 
@@ -62,7 +62,13 @@ says to fix that before onboarding [verified].
 formatting are lost on the first write [verified]. Two writers at once are not
 locked against each other; the last `os.replace` wins [inferred: no lock in the
 code]. Nothing stops an agent from editing the YAML by hand instead of using the
-script; that rule is prompt text only [verified].
+script; that rule is prompt text only [verified]. Each call runs `git` three or
+four times for the new repo and for every stored path that needs mapping, and
+lists the parent dirs of every stored path once
+(`scripts/config_add.py::dir_names()`) [verified]. With 30 stored projects a
+call took about 0.13 s, against 0.07 s before the worktree mapping and 1.35 s
+before the short-circuit [historical: 2026-09-28, hand-timed run with a mktemp
+config].
 
 A `project --repo` below a repo's top level is stored as that subpath (mapped to
 the main checkout when typed in a worktree), and the resolver matches only the
