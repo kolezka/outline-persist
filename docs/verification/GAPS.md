@@ -1,8 +1,8 @@
 ---
 block: verification
 doc: GAPS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Gaps
@@ -27,7 +27,7 @@ and, if possible, narrow; see
 ## Nothing here proves `additionalContext` reaches the model
 
 `tests/test_offswitch.sh` checks that `session-start.sh` emits JSON containing the
-dedupe marker inside `hookSpecificOutput.additionalContext` when the switch is on,
+rule text inside `hookSpecificOutput.additionalContext` when the switch is on,
 and emits zero bytes when it is off. [verified] It does not run inside a real
 Claude Code session, so it cannot show that the emitted context is actually read
 into the model's context window rather than dropped or truncated upstream. That

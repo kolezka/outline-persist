@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: OPERATIONS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Operations
@@ -17,6 +17,16 @@ Claude Code's plugin loader runs `hooks/hooks.json`'s `SessionStart` command
 `[verified]`. There is no manual entry point for the hook itself; running
 `bash scripts/session-start.sh` directly reproduces exactly what the hook does,
 which is how `tests/test_offswitch.sh` checks it `[verified]`.
+
+## Stop guard
+
+Claude Code runs `bash ${CLAUDE_PLUGIN_ROOT}/scripts/stop-guard.sh` at the end of
+every turn (`hooks/hooks.json::"stop-guard.sh"`) `[verified]`. To test it by
+hand, pipe a Stop-hook JSON into it, as `tests/test_stop_guard.sh::input()` does.
+`WORKLOG_STOP_MIN_TOOLS` changes how many tool calls count as substantive
+`[verified]`. Its per-session markers live under
+`scripts/stop_guard.py::state_stop_dir()`, which resolves `XDG_STATE_HOME`, else
+`$HOME/.local/state`, then `worklog-persist/stop` `[verified]`.
 
 ## Checking status
 
@@ -50,7 +60,7 @@ not the same layer:
    This is what the `/off` slash command wraps
    (`persistence-protocol`, one sentence and a link:
    [`../persistence-protocol/OPERATIONS.md`](../persistence-protocol/OPERATIONS.md)).
-   Only this hook's output is affected; the skill and all seven commands still
+   Only this hook's output is affected; the skill and all eight commands still
    run `[verified]`.
 3. **`./install.sh --apply --disable`**, which runs `claude plugin disable` on
    the whole plugin (`packaging`, see

@@ -1,8 +1,8 @@
 ---
 block: persistence-protocol
 doc: CONTRACTS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Contracts
@@ -16,16 +16,16 @@ format.
 ## The skill is the single operational contract
 
 `skills/worklog-persist/SKILL.md::"This skill is the operational contract"`
-[verified]. The seven command files exist and each names its verb: `load`,
-`start`, `checkpoint`, `handoff`, `complete`, `dry-run`, `off`
+[verified]. The eight command files exist and each names its verb: `load`,
+`start`, `checkpoint`, `handoff`, `complete`, `dry-run`, `off`, `setup`
 [verified]. Each command body says "Run the worklog-persist skill's" plus its own
 step, for instance `commands/handoff.md::"Run the worklog-persist skill's"`
 [verified], rather than restating the lifecycle rules, so a rule only needs to
 change in `skills/worklog-persist/SKILL.md` once [inferred: one canonical file,
-seven one-line pointers].
+eight short pointers].
 
-enforcement: `tests/test_structure.sh::"all 7 verb commands present"` checks
-only that the seven files exist, not that their bodies still defer to the
+enforcement: `tests/test_structure.sh::"all 8 verb commands present"` checks
+only that the eight files exist, not that their bodies still defer to the
 skill (test suite only).
 
 ---
@@ -48,7 +48,7 @@ never assumes one, one sentence and a link per
 discovery by keyword, not by hardcoding either string:
 `skills/worklog-persist/SKILL.md::"Find them with ToolSearch"` and
 `skills/worklog-persist/SKILL.md::"Never assume"` [verified]. None of
-the seven `commands/*.md` files contains the literal string `mcp__`, so they
+the eight `commands/*.md` files contains the literal string `mcp__`, so they
 cannot hardcode the wrong one; they name only the tool verbs and defer prefix
 discovery to the skill [verified].
 
@@ -66,30 +66,143 @@ run time).
 ## Identity resolution: `scripts/resolve-context.sh`
 
 Invoked as `skills/worklog-persist/SKILL.md::"bash ${CLAUDE_PLUGIN_ROOT}/scripts/resolve-context.sh"`
-[verified]. Prints one JSON object with exactly six fields: `repo`, `project`,
-`world`, `branch`, `worktree`, `task_slug`
-(`scripts/resolve-context.sh::"repo, project, world, branch, worktree, task_slug"`)
-[verified].
+[verified]. The shell file is a thin wrapper that execs
+`scripts/resolve_context.py` (`scripts/resolve-context.sh::"Thin wrapper"`)
+[verified]. `scripts/resolve_context.py::main()` prints one JSON object with
+these keys: `repo`, `repo_root`, `project`, `world`, `world_source`,
+`candidate_worlds`, `ignored`, `branch`, `worktree`, `task_slug`,
+`root_collection`, `global_collection`, `archive_collection`, `kb_path`,
+`tasks_path`, `record_path`, `config`, `config_path`, `config_error` [verified].
 
-- `project` and `repo` are the basename of `git remote get-url origin` with
-  `.git` stripped, falling back to the working-tree directory name when there is
-  no remote (`scripts/resolve-context.sh::"remote get-url origin"`)
-  [verified].
-- `world` is `$KB_WORLD` if set, else the literal sentinel `UNRESOLVED`
-  (`scripts/resolve-context.sh::"KB_WORLD:-UNRESOLVED"`)
-  [verified]. The script itself never shells out to `kb`; see
-  [`GAPS.md`](GAPS.md) for what that means for the manifest fallback the skill
-  describes.
-- `task_slug`, when given, must match lowercase kebab-case
-  (`scripts/resolve-context.sh::"^[a-z0-9]+(-[a-z0-9]+)*$"`) [verified], or the
+- `repo_root` is the main checkout, also from a linked worktree
+  (`scripts/resolve_context.py::canonical_repo()`) [verified].
+- `project` is the config `name` of a declared repo, else the basename of the
+  `origin` remote with `.git` stripped, else the main checkout directory name
+  (`scripts/resolve_context.py::"remote", "get-url", "origin"`) [verified].
+  Outside any git repo it is `workspace`
+  (`scripts/resolve_context.py::"workspace"`) [verified].
+- `world` has four tiers [verified]:
+  1. the repo is declared in the config (`world_source` = `config`);
+  2. `$WORKLOG_WORLD` (`env`, `scripts/resolve_context.py::"WORKLOG_WORLD"`);
+  3. path root (`path-root`): the config world whose declared repos' common
+     ancestor is the deepest ancestor-or-equal of this repo; a tie between two
+     different worlds at that depth gives nothing
+     (`scripts/resolve_context.py::path_root_world()`);
+  4. the sentinel `UNRESOLVED` (`fallback`).
+
+  An ignored repo takes no world from tiers 2 or 3 [verified]. No other env var
+  or file sets it: only the one config is read [verified].
+- `candidate_worlds` lists the world names declared in the config [verified].
+- `kb_path` is the config `kb_folder` when set, else
+  `<root_collection>/<world>/<project>`, and `None` while the world is
+  `UNRESOLVED` [verified]. `tasks_path` and `record_path` hang off it.
+- `config` is the path that was read, or `None`; `config_path` is where the
+  config is looked for, also when it does not exist; `config_error` says why no
+  config was used (`not found`, `unreadable`, `malformed`), or is `None`
+  (`scripts/resolve_context.py::load_config()`) [verified].
+- `task_slug`, when given, must match `scripts/resolve_context.py::SLUG_RE`
+  (kebab-case, optionally ticket-prefixed like `AD-163-uat-checklist`), or the
   script exits `2` with a message on stderr
-  (`scripts/resolve-context.sh::"invalid task slug"`) [verified].
+  (`scripts/resolve_context.py::"invalid task slug"`) [verified].
 
-enforcement: `tests/test_context.sh::"remote project basename"`,
-`tests/test_context.sh::"KB_WORLD honored"` and
-`tests/test_context.sh::"invalid slug rejected"` cover the three branches
-above (test suite only, run via `bash tests/test_context.sh` / `make check`,
-not on every invocation of the script itself).
+enforcement: `tests/test_context.sh::"WORKLOG_WORLD honored"`,
+`tests/test_context.sh::"config identity"`,
+`tests/test_context.sh::"worktree identity"`,
+`tests/test_context.sh::"ignored beats WORKLOG_WORLD"`,
+`tests/test_context.sh::"path-root: deepest root wins"`,
+`tests/test_context.sh::"equal-depth tie is ambiguous"`,
+`tests/test_context.sh::"ignored beats path-root"`,
+`tests/test_context.sh::"non-git project workspace"`,
+`tests/test_context.sh::"old coupling ignored"` and
+`tests/test_context.sh::"invalid slug rejected"` (test suite only, via
+`make check`, not on every invocation of the script).
+
+---
+
+## Plugin config file
+
+The resolver reads one YAML file: `$WORKLOG_CONFIG`, else
+`~/.config/worklog-persist/config.yaml`
+(`scripts/resolve_context.py::config_path()`) [verified]. It is parsed with
+PyYAML's `safe_load`; without PyYAML the resolver reports
+`scripts/resolve_context.py::"PyYAML is not installed"` in `config_error` and
+does not crash [verified]. The shape it reads:
+
+- `outline:` with `root_collection`, `global_collection`, `archive_collection`.
+  A missing key keeps `scripts/resolve_context.py::DEFAULT_OUTLINE` [verified].
+- `worlds:`, a list of `{name, projects}`, where `projects` is a list of
+  `{name, repo, kb_folder?}`. `repo` is matched after `~` expansion and symlink
+  resolution (`scripts/resolve_context.py::expand()`) [verified].
+- `ignore:`, a list of dirs: a repo equal to or below one of them is `ignored`
+  [verified].
+
+Any other key is ignored. A file with the wrong shape is rejected whole by
+`scripts/resolve_context.py::shape_error()` and reported in `config_error`, never
+raised [verified].
+
+enforcement: `tests/test_context.sh::"malformed config"`,
+`tests/test_context.sh::"unparseable config"`,
+`tests/test_context.sh::"missing config reported"`,
+`tests/test_context.sh::"default config path"` and
+`tests/test_context.sh::"no PyYAML"` (test suite only).
+
+---
+
+## Config writer: `scripts/config-add.sh`
+
+The only sanctioned writer of the config. A thin wrapper
+(`scripts/config-add.sh::"Thin wrapper"`) around `scripts/config_add.py::main()`,
+which writes the same file the resolver reads (it imports
+`scripts/resolve_context.py::config_path()`) [verified]. Two subcommands:
+
+- `project --world W --name N --repo PATH [--kb-folder F]` declares a repo
+  (`scripts/config_add.py::add_project()`) [verified];
+- `ignore --repo PATH` marks a repo as having no Outline folder
+  (`scripts/config_add.py::add_ignore()`) [verified].
+
+Behaviour [verified, from the code and `tests/test_config_add.sh`]:
+
+- A missing file and its parent dirs are created. Existing entries and keys are
+  kept; YAML comments are not.
+- `repo` is stored as the resolved absolute path.
+- The same entry again is a no-op: exit `0`, `no change` on stdout, file
+  untouched.
+- A repo already declared differently (another world, name or `kb_folder`), a
+  declared repo passed to `ignore`, or an ignored repo passed to `project`:
+  exit `1`, nothing written.
+- A file that does not parse or fails `scripts/resolve_context.py::shape_error()`:
+  exit `1`, file left byte-identical.
+- No PyYAML: exit `1`, nothing written.
+- A world or project name that is empty or holds `/`, or a `--repo` that is not
+  a directory: exit `2`, nothing written.
+- Writes go to a temp file in the same dir, then `os.replace`
+  (`scripts/config_add.py::write()`).
+
+enforcement: `tests/test_config_add.sh` (every bullet above except the mode
+copy and `fsync`, test suite only). The rule that an agent uses this script and
+never edits the YAML by hand is prompt text only
+(`skills/worklog-persist/SKILL.md::"never by editing the YAML"`): convention.
+
+---
+
+## Onboarding an unresolved repo
+
+When the resolver gives `UNRESOLVED` (so not a `path-root` match), not `ignored`, and `config_error` is empty
+or `config not found`, the skill runs its onboarding flow
+(`skills/worklog-persist/SKILL.md::"## Onboarding (unresolved repo)"`)
+[verified]. `/setup` runs the same flow (`commands/setup.md::"Onboarding"`)
+[verified]. The flow: list the top-level documents under `root_collection` as
+the worlds, never hardcoded or cached; ask one question (a world, a new world,
+or do not persist, plus the project name); record the answer with
+`config-add.sh`; bootstrap a new world with `INDEX` only and then the project
+folder; re-run the resolver and confirm `kb_path` [verified]. Without Outline it
+offers only a typed world or "Skip for this session" and writes nothing to
+Outline [verified].
+
+enforcement: convention. The flow is prompt text; no test drives it. The hook
+side that asks for it is tested in
+[`../session-hook/CONTRACTS.md`](../session-hook/CONTRACTS.md), and the writer
+in `tests/test_config_add.sh`.
 
 ---
 
@@ -125,16 +238,16 @@ actually pipes a given write through `redact.py` before calling
 
 ## Persisted record identity: idempotency key
 
-The record's identity is `project` + `task_slug`, realized as the document
-`Tasks/<task-slug>` inside `raqz.pl/<World>/<project>`
-(`skills/worklog-persist/SKILL.md::"stable key = resolved"`) [verified]. Before
+The record's identity is `project` + `task_slug`, realized as the document at
+`record_path`
+(`skills/worklog-persist/SKILL.md::"The record identity is"`) [verified]. Before
 creating a record, the commands call `list_documents` scoped to that `Tasks`
 folder and match the slug; if found, they `update_document` it instead
 (`commands/start.md::"prefer updating the existing record over creating a duplicate"`)
 [verified]. `commands/checkpoint.md::"idempotency key = project + task slug"`
 names the same rule for the checkpoint step [verified]. A timestamp alone is explicitly
 rejected as an identity source:
-`skills/worklog-persist/SKILL.md::"Never use a timestamp alone as document identity."`
+`skills/worklog-persist/SKILL.md::"Never use a timestamp as document identity."`
 [verified].
 
 enforcement: convention. No test drives a real or mocked `list_documents` /
@@ -154,6 +267,8 @@ and each command file repeats it, e.g.
 to say so once and continue the task without Outline, never to substitute a
 local claim of success:
 `skills/worklog-persist/SKILL.md::"state once that persistence is"` [verified].
+There is no offline read path: `/load` says persistence is unavailable and stops
+(`commands/load.md::"say persistence is unavailable and stop"`) [verified].
 
 enforcement: convention. This is prompt text interpreted by the model each
 session; no script or test observes whether the agent actually checked

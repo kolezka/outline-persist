@@ -1,8 +1,8 @@
 ---
 block: verification
 doc: OPERATIONS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Operations
@@ -15,12 +15,15 @@ trusting it. See [`CONTRACTS.md`](CONTRACTS.md) for what each target promises.
 
 ## Required tools
 
-- `bash`, for the four shell suites and the `test-sh` loop. [verified]
+- `bash`, for the six offline shell suites and the `test-sh` loop. [verified]
 - `git`, because `tests/test_install.sh` case 6 and 7 create a throwaway repo and
   a linked worktree with `git init`, `git worktree add` and `git commit`.
   [verified]
 - `python3`, used directly by every shell suite for JSON parsing (for example
   `tests/test_context.sh::field()`) and by `install.sh --check`. [verified]
+- PyYAML for that same `python3`: the resolver and config-writer suites read
+  and write YAML configs, and `tests/test_config_add.sh` imports `yaml` itself.
+  [verified]
 - `uv`, to run the `pytest` suite; `AGENTS.md::"is the only correct pytest call"`
   names `env -u FORCE_COLOR uv run pytest -q` as the one correct invocation.
   [verified]
@@ -35,7 +38,7 @@ trusting it. See [`CONTRACTS.md`](CONTRACTS.md) for what each target promises.
 | Command | Runs |
 |---|---|
 | `make test` | `tests/test_redact.py`, `tests/test_docs_layout.py` |
-| `make test-sh` | `tests/test_structure.sh`, `tests/test_install.sh`, `tests/test_context.sh`, `tests/test_offswitch.sh` |
+| `make test-sh` | `tests/test_structure.sh`, `tests/test_install.sh`, `tests/test_context.sh`, `tests/test_config_add.sh`, `tests/test_offswitch.sh`, `tests/test_stop_guard.sh` |
 | `make lint` | `shellcheck` on `install.sh`, `scripts/*.sh`, `tests/*.sh` |
 | `make check` | `test`, then `test-sh`, then `install.sh --check` |
 
@@ -45,7 +48,9 @@ A single suite can be run directly, without `make`:
 bash tests/test_structure.sh
 bash tests/test_install.sh
 bash tests/test_context.sh
+bash tests/test_config_add.sh
 bash tests/test_offswitch.sh
+bash tests/test_stop_guard.sh
 uv run pytest -q tests/test_redact.py
 uv run pytest -q tests/test_docs_layout.py
 ```

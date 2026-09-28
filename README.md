@@ -86,7 +86,7 @@ manual commands still work.
 
 ## Commands
 
-Seven slash commands map to the persistence lifecycle:
+Eight slash commands map to the persistence lifecycle:
 
 | Command       | Purpose |
 |---------------|---------|
@@ -97,6 +97,7 @@ Seven slash commands map to the persistence lifecycle:
 | `/complete`   | Record the real completion result with verification outcomes. |
 | `/dry-run`    | Show the intended read/write (with redaction visible), change nothing. |
 | `/off`        | Disable automatic persistence without removing the plugin. |
+| `/setup`      | Route this repo to an Outline world, or mark it as not persisted. |
 
 The full operational contract lives in `skills/worklog-persist/SKILL.md`, which
 also auto-activates by description — the robust driver even where the SessionStart
@@ -114,39 +115,72 @@ results; blockers; next action; related documents; `Last updated: YYYY-MM-DD`.
 
 ## KB structure and routing
 
-The plugin follows the Outline KB layout that the `kb` tooling and the `outline`
-skill in dotfiles-next use. It reads the same manifest: `$KB_MANIFEST`, else
-`~/.config/kb/worlds.yaml`.
+The plugin reads its own config file: `$WORKLOG_CONFIG`, else
+`~/.config/worklog-persist/config.yaml`. It is YAML and needs PyYAML
+(`python3 -m pip install pyyaml`, or your system package). Without PyYAML, or
+with a missing or broken file, the resolver never crashes. It reports
+`config_error` and falls back to `$WORKLOG_WORLD`.
+
+```yaml
+outline:
+  root_collection: My KB
+  global_collection: Notebook
+  archive_collection: Archive
+worlds:
+  - name: Alpha
+    projects:
+      - {name: my-project, repo: ~/code/my-project}
+      - {name: other-project, repo: ~/code/other, kb_folder: My KB/Alpha/custom-folder}
+ignore:
+  - ~/scratch
+```
 
 - Collections (`root_collection`, `global_collection`, `archive_collection`) come
-  from the manifest `outline:` block.
+  from the `outline:` block. A key left out keeps its built-in default.
 - A repo declared under `worlds[].projects[]` gets its world, project name and
-  optional `kb_folder` from the manifest. A linked git worktree resolves to its
+  optional `kb_folder` from the config. A linked git worktree resolves to its
   main checkout first, so it maps to the same project.
-- An undeclared repo can still match an exact declaration in another
-  `worlds*.yaml` sibling of the active manifest's directory; failing that it uses
-  `$KB_WORLD`, then path root (the declared world whose own repos are the deepest
-  ancestor-or-equal of this one; a tie between two different worlds is left
-  unresolved, never guessed); otherwise the world stays `UNRESOLVED` and the agent
-  asks once. This makes resolution depend on the repo's own location, not on
-  which manifest happened to be active when the session started. A repo under
-  `ignore:` gets no world and no folder by default.
+- An undeclared repo uses `$WORKLOG_WORLD`, then path root: the config world
+  whose own declared repos are the deepest ancestor-or-equal of this one (a tie
+  between two different worlds is left unresolved, never guessed). Otherwise the
+  world stays `UNRESOLVED` and the agent runs onboarding. A repo under `ignore`,
+  or below an ignored dir, gets no world and no folder, from any of these.
+- Outside any git repo the project is `workspace`, never the directory name.
 - Records live at `<kb_path>/Tasks/<task-slug>`, where `kb_path` is `kb_folder` or
   `<root_collection>/<World>/<project>`. Ticket slugs (`AD-163-uat-checklist`)
   are accepted.
-- Bootstrap follows `kb reconcile`: a world folder gets `INDEX` only, a project
+- Bootstrap is the plugin's own rule: a world folder gets `INDEX` only, a project
   folder gets `INDEX`, `Specs`, `Plans`, `Tasks`. It is idempotent.
-- `/load` can read the local mirror (`$OUTLINE_ROOT/outline-sync/<World>/<project>`)
-  when the MCP server is down. The result is labelled as a possibly stale snapshot.
+- When the MCP server is down, `/load` says persistence is unavailable. There is
+  no local fallback.
+
+Upgrading from 0.2: the old shared manifest and its world env var are no longer
+read. The schema is the same, so you can copy the entries you need into the file
+above, or run `/setup` once per repo.
+
+### Onboarding a repo
+
+You do not have to write the config yourself. When a session starts in a repo
+that is not declared (or there is no config yet) and `WORKLOG_WORLD` is unset,
+the SessionStart hook tells the agent to run onboarding first. `/setup` runs the
+same flow on demand. The agent lists the worlds that already exist as top-level
+documents in `root_collection`, asks you once (pick a world, name a new one, or
+do not persist this repo), and records the answer with:
+
+```bash
+bash scripts/config-add.sh project --world Alpha --name my-project --repo ~/code/my-project
+bash scripts/config-add.sh ignore --repo ~/scratch
+```
+
+`config-add.sh` creates the file if needed, keeps existing entries, does nothing
+on a repeat, refuses to move a repo to another world, and never rewrites a file
+it cannot parse. It rewrites the file in full, so YAML comments in it are lost.
 
 Check what a repo resolves to:
 
 ```bash
 bash scripts/resolve-context.sh my-task-slug
 ```
-
-Reading the manifest needs PyYAML. Without it the resolver reports
-`manifest_error` and falls back to `$KB_WORLD`.
 
 ## Tests
 
@@ -161,15 +195,14 @@ credentials in CI.
 
 ## Documentation
 
-`docs/` describes the plugin by building block, using the same layout as
-`dotfiles-next`: each block has `README`, `CONTRACTS`, `INVARIANTS`, `GAPS` and
-`OPERATIONS` pages. Start at [`docs/README.md`](docs/README.md). Rules for writing
-there are in [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md), and
-`tests/test_docs_layout.py` enforces them.
+`docs/` describes the plugin by building block: each block has `README`,
+`CONTRACTS`, `INVARIANTS`, `GAPS` and `OPERATIONS` pages. Start at
+[`docs/README.md`](docs/README.md). Rules for writing there are in
+[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md), and `tests/test_docs_layout.py`
+enforces them.
 
 ## Scope boundary
 
-This plugin was extracted from `dotfiles-next` as the Outline **persistence**
-contract only: the `outline` skill, its SessionStart rule, and the `outline` MCP
-entry. Reflection (`critic`/`reflect`), graph sync (`graphify`, `sync_outline`)
-and curriculum remain separate systems and are not included here.
+This plugin covers Outline persistence only: the skill, its SessionStart rule,
+the slash commands and the `outline` MCP entry. It has no reflection, no graph
+sync and no curriculum. It reads no config but its own.

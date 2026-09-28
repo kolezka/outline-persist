@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: CONTRACTS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Contracts
@@ -12,16 +12,18 @@ for the `enforcement:` field format.
 
 ## `hooks/hooks.json` shape
 
-### The manifest wraps SessionStart in `{"hooks": {"SessionStart": [...]}}`
+### The manifest wraps each event in `{"hooks": {"<Event>": [...]}}`
 
 Claude Code's plugin loader expects a top-level `hooks` object keyed by event
 name, each value a list of `{matcher, hooks: [...]}` entries `[verified]`. The
-file at the pin has exactly one `SessionStart` entry with `matcher: "*"` and one
-command hook (`hooks/hooks.json::"matcher"`) `[verified]`.
+file has exactly one `SessionStart` entry and one `Stop` entry, each with
+`matcher: "*"` and one command hook (`hooks/hooks.json::"matcher"`,
+`hooks/hooks.json::"stop-guard.sh"`) `[verified]`.
 
 enforcement: `tests/test_structure.sh::"hooks.json missing wrapped SessionStart"`
-  (fails the suite if `hooks['hooks']['SessionStart']` cannot be indexed) and
-  `install.sh::check_structure()` at `--check` time only.
+  and `tests/test_structure.sh::"hooks.json missing wrapped Stop"` (test suite);
+  `install.sh::check_structure()` checks only `SessionStart`, at `--check` time
+  `[verified]`.
 
 ### The command line uses `${CLAUDE_PLUGIN_ROOT}`, never a literal path
 
@@ -31,8 +33,7 @@ manifest works regardless of where the plugin was installed `[verified]`.
 
 enforcement: convention. No test in this repo inspects the literal `command`
   string inside `hooks/hooks.json`; `tests/test_structure.sh` only checks that
-  the `SessionStart` key exists and that the dedupe marker is present in
-  `scripts/session-start.sh`, not that the manifest invokes it correctly
+  the `SessionStart` key exists, not that the manifest invokes it correctly
   `[verified]`.
 
 ## `scripts/session-start.sh` output contract
@@ -64,20 +65,41 @@ enforcement: convention. No test feeds the script a reminder string containing
   a double quote or backslash to confirm the escaping holds; the current
   reminder text just happens not to need it `[verified]`.
 
-### The dedupe marker text is verbatim
+### The reminder carries the resolved identity, or the reason it has none
 
-The reminder text starts with the literal substring
-`scripts/session-start.sh::"Outline (MCP server"`. The script's own comment
-says this exact text is kept verbatim for parity with the dotfiles-next
-installer, which removes duplicate `SessionStart` entries by matching on it
-(`scripts/session-start.sh::"removes duplicate SessionStart entries by it"`)
-`[verified]`. Changing this substring would silently break that external
-dedupe match; the dedupe logic itself is not part of this repo and is not
-independently re-checked here `[assumption]`.
+After the static rule, the script runs `resolve-context.sh` and appends one
+sentence `[verified]`:
 
-enforcement: `tests/test_structure.sh::"session-start.sh missing dedupe marker"`
-  greps the file for the literal string at test time; nothing enforces it at
-  hook-run time.
+- with a `kb_path`: the world, project, KB folder and tasks path
+  (`scripts/session-start.sh::"Resolved for this repo"`);
+- for an ignored repo: that it has no Outline folder
+  (`scripts/session-start.sh::"in the worklog-persist config"`);
+- otherwise: that the world is unresolved, with the resolver's `config_error`
+  as the cause (or a default cause naming `WORKLOG_WORLD`) and its
+  `config_path` (`scripts/session-start.sh::"config_error"`). Then one of two
+  instructions:
+  - config missing, or repo not declared: run the onboarding flow before any
+    other work (`scripts/session-start.sh::"run the onboarding flow"`), which the
+    skill owns (see
+    [`../persistence-protocol/CONTRACTS.md`](../persistence-protocol/CONTRACTS.md#onboarding-an-unresolved-repo));
+  - config present but unreadable or malformed: fix it first and do not run
+    `/setup` (`scripts/session-start.sh::"Fix the config file"`).
+
+The base reminder text before this sentence is fixed; only the appended
+sentence varies `[verified]`.
+
+A resolver failure adds nothing and never fails the hook
+(`scripts/session-start.sh::"a resolver failure must never break session start"`)
+`[verified]`.
+
+enforcement: `tests/test_offswitch.sh::"hook names kb_path"`,
+  `tests/test_offswitch.sh::"hook states unresolved cause"`,
+  `tests/test_offswitch.sh::"onboarding when config missing"`,
+  `tests/test_offswitch.sh::"onboarding when repo not declared"`,
+  `tests/test_offswitch.sh::"no onboarding when resolved"`,
+  `tests/test_offswitch.sh::"no onboarding when ignored"`,
+  `tests/test_offswitch.sh::"no onboarding when config broken"` and
+  `tests/test_offswitch.sh::"base rule kept when onboarding"` (test suite only).
 
 ### The hook names the server, not a tool prefix
 
@@ -138,3 +160,38 @@ warning rather than claiming success
 enforcement: `tests/test_offswitch.sh::"env override status"` and
   `tests/test_offswitch.sh::"env override silences hook"`, run-time checks in
   the offline suite.
+
+## `scripts/stop-guard.sh` output contract
+
+### Prints `{"decision":"block","reason":...}` or nothing, always exit `0`
+
+Input is the Stop-hook JSON on stdin (`session_id`, `transcript_path`, `cwd`,
+`stop_hook_active`). Output is one block decision or no bytes. Any internal
+error allows the stop (`scripts/stop_guard.py::main()`, and the wrapper's
+`scripts/stop-guard.sh::"exit 0"`) `[verified]`.
+
+enforcement: `tests/test_stop_guard.sh` (test suite only).
+
+### When it blocks
+
+It blocks when the non-sidechain tool calls after the later of the last Outline
+write and the session marker are substantive: an `Edit`/`Write`/`NotebookEdit`,
+a `git commit`/`push` or `gh pr create`, or at least `WORKLOG_STOP_MIN_TOOLS`
+calls (default `scripts/stop_guard.py::DEFAULT_MIN_TOOLS`)
+(`scripts/stop_guard.py::is_substantive()`) `[verified]`. It never blocks when
+`stop_hook_active` is set, when persistence is off, or for an ignored repo
+(`scripts/stop_guard.py::run()`) `[verified]`.
+
+enforcement: `tests/test_stop_guard.sh` (test suite only).
+
+### The reason names the resolved context, or sends the model to `/setup`
+
+`scripts/stop_guard.py::build_reason()` names world, project and tasks path for
+a resolved repo, notes when the world came from path root, points an
+`UNRESOLVED` repo to the onboarding flow
+(`scripts/stop_guard.py::"Run the onboarding flow"`), and makes no world claim
+when the resolver itself failed `[verified]`.
+
+enforcement: `tests/test_stop_guard.sh::"unresolved: reason points to /setup"`
+  and `tests/test_stop_guard.sh::"resolve-context failure: no world claim in reason"`
+  (test suite only).

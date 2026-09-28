@@ -95,7 +95,7 @@ if mcp is not None:
     if servers != ["outline"]:
         errs.append(f".mcp.json must define exactly the 'outline' server, got {servers}")
 
-need_cmds = {"load", "start", "checkpoint", "handoff", "complete", "dry-run", "off"}
+need_cmds = {"load", "start", "checkpoint", "handoff", "complete", "dry-run", "off", "setup"}
 have = {p.stem for p in (root / "commands").glob("*.md")}
 missing = need_cmds - have
 if missing:
@@ -105,7 +105,7 @@ if not (root / "skills/worklog-persist/SKILL.md").is_file():
     errs.append("missing skills/worklog-persist/SKILL.md")
 
 for s in ("session-start.sh", "resolve-context.sh", "resolve_context.py",
-          "persistence-state.sh", "redact.py"):
+          "config-add.sh", "config_add.py", "persistence-state.sh", "redact.py"):
     if not (root / "scripts" / s).is_file():
         errs.append(f"missing scripts/{s}")
 

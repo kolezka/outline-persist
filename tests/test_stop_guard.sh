@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stop-hook tests for scripts/stop-guard.sh. Uses an isolated XDG_STATE_HOME and
-# KB_MANIFEST so it never touches real state. Run: bash tests/test_stop_guard.sh
+# WORKLOG_CONFIG so it never touches real state. Run: bash tests/test_stop_guard.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,9 +14,9 @@ trap 'rm -rf "$tmp"' EXIT
 XDG_STATE_HOME="$tmp/state"
 export XDG_STATE_HOME
 mkdir -p "$XDG_STATE_HOME"
-unset WORKLOG_HOOK_OFF WORKLOG_STOP_MIN_TOOLS || true
-# Isolate from the host kb manifest so world resolution stays deterministic.
-export KB_MANIFEST="$tmp/none.yaml"
+unset WORKLOG_HOOK_OFF WORKLOG_STOP_MIN_TOOLS WORKLOG_WORLD || true
+# Isolate from the host config so world resolution stays deterministic.
+export WORKLOG_CONFIG="$tmp/none.yaml"
 
 cwd_dir="$tmp/work"
 mkdir -p "$cwd_dir"
@@ -104,6 +104,9 @@ check "no work: silent" "$out" ""
 out="$(run_guard "$t_edit_no_write" false "case2")"
 check "edit no write: decision" "$(printf '%s' "$out" | decision)" "block"
 check "edit no write: mentions checkpoint" "$(printf '%s' "$out" | grep -c 'worklog-persist skill')" "1"
+# The work dir is not declared anywhere, so the reason sends the model to onboarding.
+check "unresolved: reason points to /setup" \
+  "$(printf '%s' "$out" | python3 -c 'import json,sys; r=json.load(sys.stdin)["reason"]; print("/setup" in r, "Ask the operator once" in r)')" "True False"
 
 # Case 3: an Outline write after the Edit clears the slate -> allow.
 out="$(run_guard "$t_edit_then_write" false "case3")"

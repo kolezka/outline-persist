@@ -1,8 +1,8 @@
 ---
 block: packaging
 doc: INVARIANTS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Invariants

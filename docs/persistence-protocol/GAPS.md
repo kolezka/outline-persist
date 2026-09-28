@@ -1,8 +1,8 @@
 ---
 block: persistence-protocol
 doc: GAPS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Gaps
@@ -31,23 +31,46 @@ body, or reporting "saved to Outline" without ever calling a write tool. See
 [`../verification/GAPS.md`](../verification/GAPS.md) for what the test suite as
 a whole does and does not cover.
 
-## `resolve-context.sh` does not call `kb`
+## No migration from the 0.2 manifest
 
-The skill describes world resolution as a fallback chain: `$KB_WORLD`,
-`skills/worklog-persist/SKILL.md::"else the manifest via"` `kb list`
-[verified]. The script itself only implements the first step:
-`world="${KB_WORLD:-UNRESOLVED}"`
-(`scripts/resolve-context.sh::"KB_WORLD:-UNRESOLVED"`) [verified], and its own
-header comment says why: `kb list` renders a human table, not JSON, so the
-script does not parse it
-(`scripts/resolve-context.sh::"do not parse it here."`) [verified]. The `kb
-list` / manifest fallback is therefore something the *agent* is expected to run
-separately, as a second command, when it sees the `UNRESOLVED` sentinel. If a
-session does not do that and does not ask the operator either, `UNRESOLVED`
-becomes the literal folder name used in Outline paths, silently, since the
-script has no way to detect that the fallback was skipped [inferred: the script
-returns a plain string field with no flag distinguishing "resolved from
-KB_WORLD" from "sentinel because no one has resolved it yet"].
+The resolver does not look for the old manifest or read the old world env var,
+by design (see [`DECISIONS.md`](DECISIONS.md#its-own-config-not-a-shared-manifest)).
+An operator who upgrades gets `UNRESOLVED` for every repo, with `config_error`
+set to `config not found: ...`, and the hook asks for onboarding [verified].
+Nothing copies the old entries across; the schema is the same, so a manual copy
+works [inferred].
+
+## A config with one bad entry is dropped whole
+
+`scripts/resolve_context.py::shape_error()` rejects the whole file when any one
+part has the wrong shape, for example one `projects` value that is not an array
+of mappings [verified]. Every repo then resolves as if no config existed. The
+cause is in `config_error`, but a single typo still turns off routing for all
+worlds [inferred from `load_config()` returning `None` on any shape error].
+
+## Nothing installs PyYAML
+
+The scripts run under whatever `python3` is on `PATH`, not the `uv` test
+environment, and `pyproject.toml` lists only the test runner [verified]. A
+machine without PyYAML resolves every repo as `UNRESOLVED` with
+`config_error` = `config unreadable: PyYAML is not installed`, and the hook
+says to fix that before onboarding [verified].
+
+## The config writer has limits
+
+`scripts/config_add.py::write()` rewrites the whole file, so YAML comments and
+formatting are lost on the first write [verified]. Two writers at once are not
+locked against each other; the last `os.replace` wins [inferred: no lock in the
+code]. Nothing stops an agent from editing the YAML by hand instead of using the
+script; that rule is prompt text only [verified].
+
+## Onboarding is prompt text
+
+The discovery, the question and the bootstrap in
+`skills/worklog-persist/SKILL.md::"## Onboarding (unresolved repo)"` are not
+run by any test [verified]. A session could skip the question, pass a worktree
+path instead of `repo_root`, or treat a non-world top-level document under
+`root_collection` as a world [inferred].
 
 ## Redaction coverage is a fixed rule list, not a guarantee
 
@@ -62,7 +85,7 @@ remembering to run it, per the "whole protocol is prompt text" gap above.
 
 ## Commands do not repeat the ToolSearch discovery step
 
-None of the seven `commands/*.md` files mentions `ToolSearch` or the dual-
+None of the eight `commands/*.md` files mentions `ToolSearch` or the dual-
 prefix rule; they call the tool verbs directly (`list_collections`,
 `create_document`, and so on) and rely on the invoking session having already
 loaded `skills/worklog-persist/SKILL.md::"Find them with ToolSearch"` [verified]
@@ -77,7 +100,7 @@ command body does].
 
 `tests/test_context.sh` and `tests/test_redact.py` cover
 `scripts/resolve-context.sh` and `scripts/redact.py` in isolation, and
-`tests/test_structure.sh::"all 7 verb commands present"` [verified] only checks
+`tests/test_structure.sh::"all 8 verb commands present"` [verified] only checks
 file existence. None of them, nor anything else found at this pin, drives a
 `list_documents` / `create_document` / `update_document` sequence to prove the
 "match on project + task slug, update instead of duplicate" rule actually holds

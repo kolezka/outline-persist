@@ -25,11 +25,10 @@ fi
 grep -q '${OUTLINE_API_TOKEN}' "$ROOT/.mcp.json" || fail ".mcp.json should use \${OUTLINE_API_TOKEN} placeholder"
 note "ok: credentials are env placeholders only"
 
-# 4. hooks.json uses the plugin (wrapped) shape and the dedupe marker text.
+# 4. hooks.json uses the plugin (wrapped) shape.
 python3 -c "import json;h=json.load(open('$ROOT/hooks/hooks.json'));assert h['hooks']['SessionStart']" \
   || fail "hooks.json missing wrapped SessionStart"
-grep -q 'Outline (MCP server' "$ROOT/scripts/session-start.sh" || fail "session-start.sh missing dedupe marker"
-note "ok: hooks wrapped + marker present"
+note "ok: hooks wrapped"
 
 # 5. hooks.json also wraps Stop, wired to stop-guard.sh, which exists on disk.
 python3 -c "import json;h=json.load(open('$ROOT/hooks/hooks.json'));assert h['hooks']['Stop']" \
@@ -38,11 +37,11 @@ python3 -c "import json;h=json.load(open('$ROOT/hooks/hooks.json'));assert h['ho
 [ -f "$ROOT/scripts/stop_guard.py" ] || fail "missing scripts/stop_guard.py"
 note "ok: Stop hook wired to stop-guard.sh"
 
-# 6. All 7 verbs exist as commands.
-for c in load start checkpoint handoff complete dry-run off; do
+# 6. All 8 verbs exist as commands.
+for c in load start checkpoint handoff complete dry-run off setup; do
   [ -f "$ROOT/commands/$c.md" ] || fail "missing command: $c"
 done
-note "ok: all 7 verb commands present"
+note "ok: all 8 verb commands present"
 
 # 7. The skill names both MCP tool prefixes and pins neither one. A plugin-only
 # install exposes mcp__plugin_worklog-persist_outline__*, never mcp__outline__*.

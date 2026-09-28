@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Identity + world resolution tests for scripts/resolve-context.sh.
-# World-agnostic: no world name is ever hardcoded; it comes from $KB_WORLD or the
-# UNRESOLVED sentinel. Run: bash tests/test_context.sh
+# World-agnostic: no world name is ever hardcoded; it comes from the plugin
+# config, $WORKLOG_WORLD or the UNRESOLVED sentinel. Run: bash tests/test_context.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,44 +12,76 @@ field() { python3 -c "import sys,json;print(json.load(sys.stdin)['$1'])"; }
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-# Isolate from the host manifest and env.
-unset KB_WORLD OUTLINE_ROOT || true
-export KB_MANIFEST="$tmp/none.yaml"
+# Isolate from the host config and env. The two legacy names are unset so the
+# "old coupling ignored" case below controls them fully.
+unset WORKLOG_WORLD KB_WORLD KB_MANIFEST || true
+export WORKLOG_CONFIG="$tmp/none.yaml"
 
 # Case 1: git repo, no remote -> project = dir name, world = UNRESOLVED sentinel.
 mkdir -p "$tmp/myproj" && git -C "$tmp/myproj" init -q && git -C "$tmp/myproj" commit -q --allow-empty -m init
-out="$(cd "$tmp/myproj" && KB_WORLD='' bash "$SCRIPT")"
+out="$(cd "$tmp/myproj" && WORKLOG_WORLD='' bash "$SCRIPT")"
 check "no-remote project" "$(printf '%s' "$out" | field project)" "myproj"
 check "no-remote world sentinel" "$(printf '%s' "$out" | field world)" "UNRESOLVED"
+check "missing config reported" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["config"],d["config_error"])')" \
+  "None config not found: $tmp/none.yaml"
 
-# Case 2: KB_WORLD overrides -> proves world is NOT hardcoded.
-out="$(cd "$tmp/myproj" && KB_WORLD=SomeWorld bash "$SCRIPT")"
-check "KB_WORLD honored" "$(printf '%s' "$out" | field world)" "SomeWorld"
+# Case 2: WORKLOG_WORLD overrides -> proves world is NOT hardcoded.
+out="$(cd "$tmp/myproj" && WORKLOG_WORLD=SomeWorld bash "$SCRIPT")"
+check "WORKLOG_WORLD honored" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "SomeWorld env"
 
-# Case 3: remote origin -> project = repo basename sans .git.
+# Case 3: the old kb coupling is gone. A legacy world env var and a valid legacy
+# manifest at the old path shape, named both by KB_MANIFEST and by the old
+# default under $HOME, must all be ignored.
+mkdir -p "$tmp/home/.config/kb"
+cat > "$tmp/home/.config/kb/worlds.yaml" <<EOF
+version: 1
+worlds:
+  - name: Legacy
+    projects:
+      - {name: legacy-name, repo: $tmp/myproj}
+EOF
+legacy() { python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d.get("config"))'; }
+check "old coupling ignored: KB_WORLD" \
+  "$(cd "$tmp/myproj" && KB_WORLD=X bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
+check "old coupling ignored: KB_WORLD + KB_MANIFEST" \
+  "$(cd "$tmp/myproj" && HOME="$tmp/home" KB_WORLD=X KB_MANIFEST="$tmp/home/.config/kb/worlds.yaml" bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
+# The old layout also had overlay manifests (worlds-*.yaml) next to the default
+# path. One there that declares this repo must be ignored too.
+mkdir -p "$tmp/home2/.config/kb"
+cat > "$tmp/home2/.config/kb/worlds-overlay.yaml" <<EOF
+worlds:
+  - name: Overlay
+    projects:
+      - {name: overlay-name, repo: $tmp/myproj}
+EOF
+check "old coupling ignored: overlay next to old default" \
+  "$(cd "$tmp/myproj" && HOME="$tmp/home2" bash "$SCRIPT" | legacy)" "UNRESOLVED fallback None"
+# With WORKLOG_CONFIG unset the default is the plugin's own file under $HOME.
+check "default config path" "$(cd "$tmp/myproj" && env -u WORKLOG_CONFIG HOME="$tmp/home" bash "$SCRIPT" | field config_path)" \
+  "$tmp/home/.config/worklog-persist/config.yaml"
+
+# Case 4: remote origin -> project = repo basename sans .git.
 git -C "$tmp/myproj" remote add origin "git@github.com:acme/coolrepo.git"
 out="$(cd "$tmp/myproj" && bash "$SCRIPT")"
 check "remote project basename" "$(printf '%s' "$out" | field project)" "coolrepo"
 
-# Case 4: valid kebab slug preserved.
+# Case 5: valid kebab slug preserved.
 out="$(cd "$tmp/myproj" && bash "$SCRIPT" my-task-123)"
 check "valid slug" "$(printf '%s' "$out" | field task_slug)" "my-task-123"
 out="$(cd "$tmp/myproj" && bash "$SCRIPT" AD-163-uat-checklist)"
 check "ticket slug" "$(printf '%s' "$out" | field task_slug)" "AD-163-uat-checklist"
 
-# Case 5: invalid slug rejected (exit 2).
+# Case 6: invalid slug rejected (exit 2).
 rc=0; (cd "$tmp/myproj" && bash "$SCRIPT" "Bad_Slug") >/dev/null 2>&1 || rc=$?
 check "invalid slug rejected" "$rc" "2"
 
-# Manifest fixture: custom collections, a declared project whose name differs from
+# Config fixture: custom collections, a declared project whose name differs from
 # the directory, a kb_folder override, and an ignored repo.
 mkdir -p "$tmp/other" "$tmp/skipme"
 git -C "$tmp/other" init -q && git -C "$tmp/other" commit -q --allow-empty -m init
 git -C "$tmp/skipme" init -q && git -C "$tmp/skipme" commit -q --allow-empty -m init
-cat > "$tmp/worlds.yaml" <<EOF
-version: 1
+cat > "$tmp/config.yaml" <<EOF
 outline:
-  base_url: https://example.invalid
   root_collection: RootKB
   global_collection: Notebook
   archive_collection: Attic
@@ -63,15 +95,17 @@ worlds:
 ignore:
   - $tmp/skipme
 EOF
-export KB_MANIFEST="$tmp/worlds.yaml"
+export WORKLOG_CONFIG="$tmp/config.yaml"
 
-# Case 6: declared repo -> world, name and collections from the manifest, which
-# beats KB_WORLD.
-out="$(cd "$tmp/myproj" && KB_WORLD=Wrong bash "$SCRIPT" t)"
-check "manifest identity" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["project"],d["record_path"],d["global_collection"],d["archive_collection"])')" \
-  "Alpha manifest declared-name RootKB/Alpha/declared-name/Tasks/t Notebook Attic"
+# Case 7: declared repo -> world, name and collections from the config, which
+# beats WORKLOG_WORLD.
+out="$(cd "$tmp/myproj" && WORKLOG_WORLD=Wrong bash "$SCRIPT" t)"
+check "config identity" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["project"],d["record_path"],d["global_collection"],d["archive_collection"])')" \
+  "Alpha config declared-name RootKB/Alpha/declared-name/Tasks/t Notebook Attic"
+check "config path reported" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["config"],d["config_error"])')" \
+  "$tmp/config.yaml None"
 
-# Case 7: a linked worktree maps to its main checkout's project, not its dir name.
+# Case 8: a linked worktree maps to its main checkout's project, not its dir name.
 git -C "$tmp/myproj" worktree add -q -b feat/x "$tmp/wt-elsewhere"
 out="$(cd "$tmp/wt-elsewhere" && bash "$SCRIPT")"
 check "worktree identity" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["project"],d["branch"],d["repo_root"])')" \
@@ -81,61 +115,51 @@ check "worktree identity" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=
 mkdir -p "$tmp/store" && git init -q --separate-git-dir "$tmp/store/.git" "$tmp/sep"
 check "separate git dir" "$(cd "$tmp/sep" && bash "$SCRIPT" | field repo_root)" "$(cd "$tmp/sep" && pwd -P)"
 
-# Case 8: kb_folder override is used verbatim.
+# Case 9: kb_folder override is used verbatim.
 out="$(cd "$tmp/other" && bash "$SCRIPT" t)"
 check "kb_folder override" "$(printf '%s' "$out" | field tasks_path)" "RootKB/Beta/custom-folder/Tasks"
 
-# Case 9: an ignored repo is flagged, gets no world, and offers the candidates.
+# Case 10: an ignored repo is flagged, gets no world, and offers the candidates.
 out="$(cd "$tmp/skipme" && bash "$SCRIPT")"
 check "ignored repo" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["ignored"],d["world"],d["kb_path"],",".join(d["candidate_worlds"]))')" \
   "True UNRESOLVED None Alpha,Beta"
-# KB_WORLD must not route an ignored repo.
-check "ignored beats KB_WORLD" "$(cd "$tmp/skipme" && KB_WORLD=E bash "$SCRIPT" | field kb_path)" "None"
-# A repo below an ignored dir is ignored too, as in kb discovery.
+# WORKLOG_WORLD must not route an ignored repo.
+check "ignored beats WORKLOG_WORLD" "$(cd "$tmp/skipme" && WORKLOG_WORLD=E bash "$SCRIPT" | field kb_path)" "None"
+# A repo below an ignored dir is ignored too.
 mkdir -p "$tmp/skipme/sub" && git -C "$tmp/skipme/sub" init -q
 check "nested ignored" "$(cd "$tmp/skipme/sub" && bash "$SCRIPT" | field ignored)" "True"
 
-# Case 10: the mirror dir drops the root-collection segment and must exist.
-export OUTLINE_ROOT="$tmp/okb"
-before="$(cd "$tmp/myproj" && bash "$SCRIPT" | field mirror_dir)"
-mkdir -p "$tmp/okb/outline-sync/Alpha/declared-name"
-after="$(cd "$tmp/myproj" && bash "$SCRIPT" | field mirror_dir)"
-check "mirror dir" "$before $after" "None $tmp/okb/outline-sync/Alpha/declared-name"
+# A config with the wrong shape is reported, never a crash.
+printf 'outline: [x]\nworlds: [a, b]\nignore: 3\n' > "$tmp/bad.yaml"
+check "malformed config" "$(cd "$tmp/myproj" && WORKLOG_CONFIG="$tmp/bad.yaml" bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"][:16])')" \
+  "UNRESOLVED None config malformed"
 
-# A manifest with the wrong shape is reported, never a crash. Own directory: a
-# sibling worlds.yaml next to it would (correctly, per tier 2) resolve the world
-# from there instead, which is a different case, tested separately above.
-mkdir -p "$tmp/badmanifest"
-printf 'outline: [x]\nworlds: [a, b]\nignore: 3\n' > "$tmp/badmanifest/bad.yaml"
-check "malformed manifest" "$(cd "$tmp/myproj" && KB_MANIFEST="$tmp/badmanifest/bad.yaml" bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["manifest"],bool(d["manifest_error"]))')" "UNRESOLVED None True"
+# A file that is not YAML at all is reported, never a crash, and the env still works.
+printf 'worlds:\n  - name: [unclosed\n' > "$tmp/garbage.yaml"
+check "unparseable config" "$(cd "$tmp/myproj" && WORKLOG_CONFIG="$tmp/garbage.yaml" WORKLOG_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"][:17])')" \
+  "E None config unreadable"
 
-# Without PyYAML the manifest is reported unreadable and KB_WORLD still works.
+# Without PyYAML the config is reported unreadable, never a crash, and the env still works.
 mkdir -p "$tmp/noyaml" && echo 'raise ImportError("stub")' > "$tmp/noyaml/yaml.py"
-check "no PyYAML" "$(cd "$tmp/myproj" && PYTHONPATH="$tmp/noyaml" KB_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["manifest_error"][:6])')" "E PyYAML"
+check "no PyYAML" "$(cd "$tmp/myproj" && PYTHONPATH="$tmp/noyaml" WORKLOG_WORLD=E bash "$SCRIPT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["config"],d["config_error"])')" \
+  "E None config unreadable: PyYAML is not installed"
 
-# --- Cross-manifest / path-root resolution (round 3) ---
-# Own directory, so the sibling-manifest glob does not also pick up worlds.yaml /
-# single-world.yaml / bad.yaml from the cases above.
+# --- Path root: an undeclared repo takes the world whose declared repos it sits under ---
+# Own directory and own config, so the fixtures above do not add roots.
 cm="$tmp/cm"
-mkdir -p "$cm/manifests" "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project"
-for d in "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project"; do
+mkdir -p "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project" "$cm/y"
+for d in "$cm/a/x1" "$cm/a/x2" "$cm/a/ignored-sub" "$cm/a/undeclared" "$cm/b1" "$cm/b2" "$cm/exact-project" "$cm/y"; do
   git -C "$d" init -q && git -C "$d" commit -q --allow-empty -m init
 done
 cm="$(cd "$cm" && pwd -P)"
-
-# World A's declared repos live under $cm/a (deep, narrow root); World B's live
-# directly under $cm (shallow, broad root) -- the real Inkitt-vs-Kolezka shape.
-cat > "$cm/manifests/worlds-a.yaml" <<EOF
+# WorldA's repos live under $cm/a (deep, narrow root); WorldB's directly under
+# $cm (shallow, broad root). WorldC declares one repo that sits inside B's root.
+cat > "$cm/config.yaml" <<EOF
 worlds:
   - name: WorldA
     projects:
       - {name: x1, repo: $cm/a/x1}
       - {name: x2, repo: $cm/a/x2}
-ignore:
-  - $cm/a/ignored-sub
-EOF
-cat > "$cm/manifests/worlds-b.yaml" <<EOF
-worlds:
   - name: WorldB
     projects:
       - {name: b1, repo: $cm/b1}
@@ -143,47 +167,32 @@ worlds:
   - name: WorldC
     projects:
       - {name: exact-project, repo: $cm/exact-project}
+ignore:
+  - $cm/a/ignored-sub
 EOF
-# A malformed sibling must not break resolution for the others: it sits in this
-# same directory for every case below.
-printf 'worlds: [a, b]\n' > "$cm/manifests/worlds-bad.yaml"
+pr() { python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["ignored"])'; }
+export WORKLOG_CONFIG="$cm/config.yaml"
 
-# Case 11: an undeclared dir under A's own (deeper) root resolves to A via
-# path-root, whichever manifest happens to be active.
-out="$(cd "$cm/a/undeclared" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
-check "path-root A (A active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["manifest_error"])')" "WorldA path-root None"
-out="$(cd "$cm/a/undeclared" && KB_MANIFEST="$cm/manifests/worlds-b.yaml" KB_WORLD='' bash "$SCRIPT")"
-check "path-root A (B active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "WorldA path-root"
-
-# Case 12: a dir under B's broader root but outside A's resolves to B via
-# path-root, whichever manifest is active.
-mkdir -p "$cm/y" && git -C "$cm/y" init -q && git -C "$cm/y" commit -q --allow-empty -m init
-out="$(cd "$cm/y" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
-check "path-root B (A active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "WorldB path-root"
-out="$(cd "$cm/y" && KB_MANIFEST="$cm/manifests/worlds-b.yaml" KB_WORLD='' bash "$SCRIPT")"
-check "path-root B (B active)" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"])')" "WorldB path-root"
-
-# Case 13: an exact project declared only in the non-active sibling manifest
-# still wins, source "manifest", and names which manifest matched.
-out="$(cd "$cm/exact-project" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
-check "sibling manifest exact match" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["world_source"],d["manifest_matched"])')" "WorldC manifest $cm/manifests/worlds-b.yaml"
-
-# Case 14: the active manifest's ignore list beats path-root, even for a repo
-# that sits inside a declared world's own root.
-out="$(cd "$cm/a/ignored-sub" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT")"
-check "ignored beats path-root" "$(printf '%s' "$out" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["world"],d["ignored"])')" "UNRESOLVED True"
-
-# Case 15: a dir outside every declared root stays UNRESOLVED.
+# The deepest root wins: under A's root beats B's broader one.
+check "path-root: deepest root wins" "$(cd "$cm/a/undeclared" && bash "$SCRIPT" | pr)" "WorldA path-root False"
+check "path-root: broader root" "$(cd "$cm/y" && bash "$SCRIPT" | pr)" "WorldB path-root False"
+# An exact declaration beats path root even inside another world's root.
+check "declaration beats path-root" "$(cd "$cm/exact-project" && bash "$SCRIPT" | pr)" "WorldC config False"
+# WORKLOG_WORLD is tier 2, so it beats path root.
+check "WORKLOG_WORLD beats path-root" "$(cd "$cm/a/undeclared" && WORKLOG_WORLD=E bash "$SCRIPT" | pr)" "E env False"
+# An ignored repo gets no world from path root, even inside a world's root.
+check "ignored beats path-root" "$(cd "$cm/a/ignored-sub" && bash "$SCRIPT" | pr)" "UNRESOLVED fallback True"
+# Outside every declared root nothing is inferred.
 mkdir -p "$tmp/cm-outside/proj" && git -C "$tmp/cm-outside/proj" init -q && git -C "$tmp/cm-outside/proj" commit -q --allow-empty -m init
-check "outside every root" "$(cd "$tmp/cm-outside/proj" && KB_MANIFEST="$cm/manifests/worlds-a.yaml" KB_WORLD='' bash "$SCRIPT" | field world)" "UNRESOLVED"
+check "outside every root" "$(cd "$tmp/cm-outside/proj" && bash "$SCRIPT" | pr)" "UNRESOLVED fallback False"
+# Candidates come from the one config.
+check "candidate worlds from config" "$(cd "$cm/y" && bash "$SCRIPT" | python3 -c 'import sys,json;print(",".join(json.load(sys.stdin)["candidate_worlds"]))')" "WorldA,WorldB,WorldC"
 
-# Case 16: two different worlds tied at the same root depth are ambiguous, never
-# guessed at. Own directory: this fixture's "same root" shape must not leak into
-# the A-vs-B checks above.
+# Two different worlds tied at the same root depth are ambiguous, never guessed.
 tie="$tmp/tie"
-mkdir -p "$tie/manifests" "$tie/shared/proj/sub"
+mkdir -p "$tie/shared/proj/sub"
 git -C "$tie/shared/proj/sub" init -q && git -C "$tie/shared/proj/sub" commit -q --allow-empty -m init
-cat > "$tie/manifests/worlds-t.yaml" <<EOF
+cat > "$tie/config.yaml" <<EOF
 worlds:
   - name: T1
     projects:
@@ -192,12 +201,11 @@ worlds:
     projects:
       - {name: t2, repo: $tie/shared/proj}
 EOF
-check "equal-depth tie is ambiguous" "$(cd "$tie/shared/proj/sub" && KB_MANIFEST="$tie/manifests/worlds-t.yaml" KB_WORLD='' bash "$SCRIPT" | field world)" "UNRESOLVED"
+check "equal-depth tie is ambiguous" "$(cd "$tie/shared/proj/sub" && WORKLOG_CONFIG="$tie/config.yaml" bash "$SCRIPT" | pr)" "UNRESOLVED fallback False"
 
-# Case 17: a directory with no git repo at all resolves project "workspace", never
-# the directory's basename.
+# A directory with no git repo at all resolves project "workspace", never its basename.
 mkdir -p "$tmp/not-a-repo"
-check "non-git project workspace" "$(cd "$tmp/not-a-repo" && KB_MANIFEST="$tmp/none.yaml" bash "$SCRIPT" | field project)" "workspace"
+check "non-git project workspace" "$(cd "$tmp/not-a-repo" && WORKLOG_CONFIG="$tmp/none.yaml" bash "$SCRIPT" | field project)" "workspace"
 
 # Invariant: the resolver hardcodes no world name.
 if grep -nE "(STX|Inkitt|Kole)" "$ROOT/scripts/resolve_context.py"; then

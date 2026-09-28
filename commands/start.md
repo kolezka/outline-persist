@@ -5,7 +5,7 @@ description: Create or update the Outline task record at the start of a work ite
 
 Run the worklog-persist skill's **start** step.
 
-1. Availability check; resolve identity via `scripts/resolve-context.sh <slug>` (ask once if world is `UNRESOLVED`, the repo is `ignored`, or the slug is unclear).
+1. Availability check; resolve identity via `scripts/resolve-context.sh <slug>` (run `/setup` first if world is `UNRESOLVED`; ask once if the repo is `ignored` or the slug is unclear).
 2. Bootstrap if `kb_path` or its children are missing: world folder gets `INDEX` only, project folder gets `INDEX`, `Specs`, `Plans`, `Tasks`. Check each before creating it.
 3. `list_documents` in `tasks_path` and match the task slug — **prefer updating the existing record over creating a duplicate** (idempotency key = project + task slug).
 4. Compose the record body with: objective, acceptance criteria, repo, worktree, branch, status `active`, timestamp `Last updated: YYYY-MM-DD`, and a `## Related` section linking the Spec/Plan and related docs.

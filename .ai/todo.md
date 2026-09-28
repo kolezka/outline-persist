@@ -1,32 +1,12 @@
-# Task: manifest-aware routing for worklog-persist (align with dotfiles-next outline KB)
+# Task: config-aware routing for worklog-persist
 
-- [x] scripts/resolve_context.py: manifest-aware identity (world/project/kb_folder/ignore, collections, worktree canonicalisation, ticket slugs, mirror dir)
+- [x] scripts/resolve_context.py: manifest-aware identity (world/project/kb_folder/ignore, collections, worktree canonicalisation, ticket slugs)
 - [x] scripts/resolve-context.sh: thin wrapper
 - [x] session-start.sh: inject resolved kb_path
-- [x] SKILL.md + commands: use resolved paths, bootstrap seeding shape, status->parent flag map, mirror fallback for load
+- [x] SKILL.md + commands: use resolved paths, bootstrap seeding shape, status->parent flag map
 - [x] tests: manifest cases, worktree, ticket slug
 - [x] README, install.sh --check, version bump
 - [x] run tests; independent review
-
-<<<<<<< HEAD
-Scope decision (user): **Option 1** — standalone plugin only. Do NOT modify the
-live `dotfiles-next` repo (no install.sh edits, no golden-master regen). The
-dotfiles migration is a separate reviewed follow-up.
-
-## Migration map (source: /home/me/Development/dotfiles-next)
-
-- **Contract (move):** `claude/skills/outline/SKILL.md`, `claude/hooks/outline.json`,
-  the `outline` entry in `mcp.json`.
-- **Reflection only (keep out):** `claude/agents/critic.md`, `claude/commands/reflect.md`,
-  `claude/hooks/reflect_gate.py`, `kb/curriculum*.py`.
-- **Graph sync only (keep out):** `graphify/sync_outline.py`, `graphify/outline-graph-sync`,
-  `graphify/install-graph-hooks.sh`, `bin/outline-graph-sync.sh`, `kb/outline.py`.
-- **Generated views (never hand-edit):** `codex/hooks/outline.json`, `codex/AGENTS.md`,
-  `opencode/AGENTS.md` — regen `make codex-build`/`opencode-build`. Out of scope for opt 1.
-- **Depends on (external, not vendored):** `kb list` / `~/.config/kb/worlds.yaml` for world
-  resolution. Plugin degrades gracefully when absent; never hardcodes a world name.
-- **Unchanged behavior preserved:** SessionStart rule text + dedupe marker `"Outline (MCP server"`,
-  `WORKLOG_HOOK_OFF` gate, world resolution via `kb list`, no-secrets rule.
 
 ## Key doc facts (verified 2026-09-21)
 
@@ -65,7 +45,7 @@ dotfiles migration is a separate reviewed follow-up.
 All build tasks done. Test outcomes:
 - `tests/test_redact.py` — 12 passed (RED first: 2 real gaps found — `sk-proj-` hyphen,
   keys ending `_TOKEN`; fixed, then GREEN).
-- `tests/test_context.sh` — PASS (identity + world-agnostic: KB_WORLD honored, UNRESOLVED
+- `tests/test_context.sh` — PASS (identity + world-agnostic: world env var honored, UNRESOLVED
   sentinel, remote basename, slug validation).
 - `tests/test_offswitch.sh` — PASS (off/on toggle + hook gating + WORKLOG_HOOK_OFF).
 - `tests/test_structure.sh` — PASS (discovery, idempotent --check, single outline MCP,
@@ -81,10 +61,9 @@ no doc mutation) which is skipped by default.
 **Unverified:** real `claude plugin install` of this marketplace (did not mutate the live CLI
 registry without user go-ahead); plugin SessionStart additionalContext delivery (known upstream
 bugs — SKILL is the fallback).
-**Blocked/out of scope (opt 1):** dotfiles-next install.sh edits + codex/opencode golden-master
-regen; deferred to a separate reviewed step.
 
-## 2026-09-24: align with dotfiles-next structure
+
+## 2026-09-24: repo layout and docs tree
 
 - [x] install.sh: dry-run default, --apply, --yes, worktree refusal, exact plugin@marketplace match (69d73de)
 - [x] Makefile, pyproject.toml + uv.lock, AGENTS.md, .claude/CLAUDE.md; tests/run.sh removed (69d73de)
@@ -98,11 +77,32 @@ regen; deferred to a separate reviewed step.
 Verified: `make check` green (18 pytest, 5 shell suites, install.sh --check); `make lint` clean.
 Red runs seen for test_install.sh cases and the skill prefix test.
 Not done: live install (`make install`) and live Outline test; the outline MCP returned HTTP 401 this session.
-Observed machine state: old `outline-persist@kolezka` plugin is still installed and enabled.
-=======
-## Review
+Observed machine state: old `outline-persist@<marketplace>` plugin is still installed and enabled.
+
+## Review (routing)
 - Suite green: `PATH=/usr/bin:$PATH bash tests/run.sh` (python3 is shimmed by a plugin in Claude sessions).
 - Red run on master: test_context aborts with exit 2 on ticket slug; hook kb_path check fails.
-- Independent review found 5 issues (ignored+KB_WORLD, nested ignore, --separate-git-dir, malformed manifest crash, misleading hook cause). All fixed test-first.
+- Independent review found 5 issues (ignored repo plus world env var, nested ignore, --separate-git-dir, malformed config crash, misleading hook cause). All fixed test-first.
 - Not committed. `.claude/tdd-guard/data/modifications.json` is scratch, do not stage.
->>>>>>> origin/master
+
+## 2026-09-28: standalone
+
+- [x] Resolver reads the plugin's own config (`$WORKLOG_CONFIG`, else a file under `~/.config/worklog-persist/`). First pass used TOML; see the follow-up below.
+- [x] World env var is now `WORKLOG_WORLD`. The old name and the old manifest are ignored, locked by the "old coupling ignored" cases in `tests/test_context.sh` (red on the 0.2 resolver, green now).
+- [x] JSON keys `manifest`/`manifest_error` became `config`/`config_error`; `world_source` says `config`. The offline mirror and its output key are gone.
+- [x] Hook, skill, commands, README and docs describe the plugin on its own. Dedupe-marker test and docs contract removed; the reminder text is unchanged.
+- [x] Plugin version 0.3.0.
+
+### Follow-up: YAML and onboarding
+
+- [x] Config is YAML again (`config.yaml`), needs PyYAML; missing PyYAML is reported in `config_error`, never a crash. New output key `config_path`.
+- [x] `scripts/config-add.sh` (+ `config_add.py`): `project` and `ignore` subcommands; creates the file, keeps entries, idempotent, refuses conflicts and unparseable files, atomic replace. `tests/test_config_add.sh` red then green.
+- [x] Hook: unresolved repo (config missing or repo not declared) gets an onboarding instruction with cause and config path; a broken config gets "fix it first". Base reminder unchanged. Hook cases red then green.
+- [x] Skill: Onboarding section (worlds read live from Outline, one question, write via the script, bootstrap, confirm). New `/setup` command; install.sh --check and test_structure now expect 8 commands.
+
+### Merge of master (Stop guard, #6)
+
+- [x] Kept: Stop guard (hooks.json, stop-guard.sh, stop_guard.py, test_stop_guard.sh), non-git `workspace` project, path-root tier over the one config.
+- [x] Dropped: sibling `worlds*.yaml` scan and its output key. Precedence is config, `WORKLOG_WORLD`, path root, `UNRESOLVED` (onboarding).
+- [x] Stop guard sends an unresolved repo to `/setup`. New tests: overlay manifest ignored, path-root repo gets no onboarding, stop reason points to `/setup`.
+

@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: GAPS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Gaps
@@ -57,4 +57,19 @@ parent directory is not writable, `mkdir` fails and the script aborts on
 `errexit` with `mkdir`'s own stderr message, not a `worklog-persist:`-prefixed
 one `[inferred]` from the script's structure and its shell options. No test in
 this repo constructs an unwritable state directory to exercise this path
+`[verified]`.
+
+## "Substantive" is a heuristic over the transcript format
+
+`scripts/stop_guard.py::load_tool_uses()` parses Claude Code's JSONL transcript
+and `scripts/stop_guard.py::WRITE_RE` recognises an Outline write by tool name
+`[verified]`. A change to the transcript shape or the tool names would make the
+guard silently allow every stop, or block after a write it did not recognise
+`[inferred]`. Work done only through tools outside the edit, commit and count
+rules does not trigger it `[verified]`.
+
+## Stop markers are never cleaned up
+
+One file per session id under the state dir's `stop/` folder
+(`scripts/stop_guard.py::state_stop_dir()`) is written and never removed
 `[verified]`.

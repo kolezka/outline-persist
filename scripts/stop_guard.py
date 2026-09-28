@@ -18,7 +18,7 @@ last write, as if there were no marker at all. The marker is skipped when
 
 The transcript is evaluated first, with no subprocess call. `resolve-context.sh`
 only runs once the hook has already decided to block, since it is the one part of
-this hook slow and fallible enough (kb manifest YAML, subprocess) to be worth not
+this hook slow and fallible enough (plugin config YAML, subprocess) to be worth not
 paying for on every silent turn. If it fails, the hook still blocks, just with a
 reason that carries no world context.
 
@@ -175,15 +175,15 @@ def build_reason(identity):
         return " ".join([lead, where, trivial])
     world = identity.get("world") or "UNRESOLVED"
     if world == "UNRESOLVED":
-        where = ("World is unresolved for this project. Ask the operator once "
-                 "which world this belongs to before writing anything.")
+        where = ("World is unresolved for this project. Run the onboarding flow "
+                 "(/setup) before writing anything.")
     else:
         where = (f"Resolved context: world `{world}`, "
                  f"project `{identity.get('project')}`, "
                  f"tasks path `{identity.get('tasks_path')}`.")
         if identity.get("world_source") == "path-root":
             where += (" (world inferred from the directory; if that is wrong, "
-                       "ask the operator)")
+                      "run /setup to declare the repo)")
     return " ".join([lead, where, trivial])
 
 
@@ -211,7 +211,7 @@ def run(data):
         return None
 
     # Only reached when about to block: resolve-context is the slow, fallible part
-    # (kb manifest YAML, a subprocess), not worth paying for on every silent turn.
+    # (plugin config YAML, a subprocess), not worth paying for on every silent turn.
     try:
         identity = resolve_context(data.get("cwd") or ".")
     except Exception:  # noqa: BLE001 - a failed lookup still blocks, just generically

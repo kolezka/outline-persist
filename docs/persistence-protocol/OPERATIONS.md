@@ -1,8 +1,8 @@
 ---
 block: persistence-protocol
 doc: OPERATIONS
-verified_against: 6e559c3
-verified_on: 2026-09-24
+verified_against: d56da34
+verified_on: 2026-09-28
 ---
 
 # Operations
@@ -14,7 +14,7 @@ versus the one it only calls, and known stuck states.
 
 ## Entry points
 
-Seven slash commands, each a thin pointer into
+Eight slash commands, each a thin pointer into
 `skills/worklog-persist/SKILL.md::"This skill is the operational contract"`
 [verified]:
 
@@ -27,6 +27,7 @@ Seven slash commands, each a thin pointer into
 | `/complete` | `commands/complete.md::"Record the real completion result of a work item in Outline."` | Yes, update only |
 | `/dry-run` | `commands/dry-run.md::"Show the intended Outline read or write without changing anything."` | No, `commands/dry-run.md::"Output the plan only. Make no mutation to Outline."` [verified] |
 | `/off` | `commands/off.md::"Disable automatic Outline persistence without removing the plugin."` | No Outline write; toggles a local switch, see below |
+| `/setup` | `commands/setup.md::"Route this repo to an Outline world, or mark it as not persisted."` | Writes the config through `config-add.sh`; bootstraps Outline folders when connected |
 
 All descriptions above are the command's own front-matter `description:` field,
 read verbatim [verified].
@@ -34,13 +35,22 @@ read verbatim [verified].
 ## Identity: what `resolve-context.sh` resolves and what it does not
 
 Run as `scripts/resolve-context.sh [task-slug]`
-(`scripts/resolve-context.sh::"Prints JSON with"`) [verified]. It resolves, in
-order: `repo`/`project` from the git remote or directory name, `branch` and
-`worktree` from the local checkout, `world` from `$KB_WORLD` or the
-`UNRESOLVED` sentinel, and `task_slug` from its argument if valid kebab-case.
-Full field-by-field contract: [`CONTRACTS.md`](CONTRACTS.md). It writes nothing
-to disk; it only prints JSON to stdout. There is no cache and no local record of
-a previously resolved identity, so every command re-resolves it fresh.
+(`scripts/resolve_context.py::"Usage: resolve_context.py [task-slug]"`)
+[verified]. It resolves `repo`, `project`, `branch` and `worktree` from git, then
+looks the main checkout up in the plugin config, then falls back to
+`$WORKLOG_WORLD`, then to path root (the config world whose repos it sits
+under), then to the `UNRESOLVED` sentinel. Full field-by-field
+contract: [`CONTRACTS.md`](CONTRACTS.md). It writes nothing to disk; it only
+prints JSON to stdout. There is no cache and no local record of a previously
+resolved identity, so every command re-resolves it fresh [verified].
+
+## Where the config lives
+
+Ask the resolver, never restate the path: `scripts/resolve_context.py::config_path()`
+reads `WORKLOG_CONFIG`, else falls back to a file under `$HOME/.config`
+[verified]. The JSON field `config` names the file actually read, and
+`config_error` says why none was [verified]. To test a config without touching
+the real one, point `WORKLOG_CONFIG` at a scratch file for one command.
 
 ## Kill switches
 
@@ -62,21 +72,26 @@ but calls no write tool
 
 ## Stuck states
 
-- **World stuck at `UNRESOLVED`.** `scripts/resolve-context.sh` has no network
-  access to a KB manifest; it only reads `$KB_WORLD`
-  (`scripts/resolve-context.sh::"KB_WORLD:-UNRESOLVED"`) [verified]. If the
-  session also fails to resolve it via `kb list` and does not ask the operator,
-  every path it builds uses the literal string `UNRESOLVED` as a folder name.
-  Recovery: set `KB_WORLD` in the environment, or answer the "ask the operator
-  once" prompt (`skills/worklog-persist/SKILL.md::"ask the operator once"`)
-  [verified] the next time it appears.
+- **World stuck at `UNRESOLVED`.** Check `config_error` in the resolver output
+  first. `config not found` means no config file exists at the resolved path;
+  `config unreadable` or `config malformed` means the file is there but was
+  rejected (`scripts/resolve_context.py::load_config()`) [verified]. While the
+  world is `UNRESOLVED`, `kb_path` is `None`, so no path is built from the
+  sentinel [verified]. Recovery: declare the repo in the config, or set
+  `WORKLOG_WORLD`, or run `/setup`
+  (`commands/setup.md::"Onboarding"`) [verified].
+- **`config-add.sh` refuses.** Exit `1` means nothing was written. The message
+  names the cause: an existing different declaration, an ignore conflict, a file
+  it cannot parse, or no PyYAML (`scripts/config_add.py::Refused`) [verified].
+  Recovery: the operator fixes the file or picks another answer; never edit
+  around the refusal by hand.
 - **Invalid task slug.** The script exits `2` rather than guessing a
   normalization
-  (`scripts/resolve-context.sh::"invalid task slug"`) [verified]. Recovery:
+  (`scripts/resolve_context.py::"invalid task slug"`) [verified]. Recovery:
   supply a lowercase kebab-case slug; `/load` also lets the session
   `commands/load.md::"ask the user for the slug if unclear"` [verified].
-- **Outline unavailable.** No queue, no retry, no local write path is defined
-  here beyond the skill's explicit escape hatch: state it once and keep working
+- **Outline unavailable.** No queue, no retry, no local read or write path is
+  defined here beyond the skill's explicit escape hatch: state it once and keep working
   without Outline
   (`skills/worklog-persist/SKILL.md::"state once that persistence is"`)
   [verified]. Recovery: nothing to do locally; the next successful availability
