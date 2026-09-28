@@ -1,7 +1,7 @@
 ---
 block: verification
 doc: CONTRACTS
-verified_against: f54b323
+verified_against: 44e1f73
 verified_on: 2026-09-28
 ---
 
