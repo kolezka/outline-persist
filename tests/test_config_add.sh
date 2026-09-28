@@ -83,4 +83,15 @@ check "no PyYAML: names the cause" "$(grep -c 'PyYAML' <<<"$err")" "1"
 rc=0; WORKLOG_CONFIG="$tmp/fresh.yaml" bash "$ADD" project --world 'A/B' --name n --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
 check "world with slash refused" "$([ "$rc" != 0 ] && echo yes) $(sum "$tmp/fresh.yaml")" "yes absent"
 
+# 11. A symlinked config (dotfiles) stays a symlink; the entry lands in its target.
+mkdir -p "$tmp/dotfiles" "$tmp/linkdir"
+printf 'worlds: []\n' > "$tmp/dotfiles/config.yaml" && chmod 600 "$tmp/dotfiles/config.yaml"
+ln -s "$tmp/dotfiles/config.yaml" "$tmp/linkdir/config.yaml"
+rc=0; WORKLOG_CONFIG="$tmp/linkdir/config.yaml" bash "$ADD" project --world Alpha --name linked --repo "$tmp/one" >/dev/null 2>&1 || rc=$?
+check "symlink: exit 0" "$rc" "0"
+check "symlink: still a symlink" "$(test -L "$tmp/linkdir/config.yaml" && echo yes)" "yes"
+check "symlink: target has entry" "$(grep -c 'name: linked' "$tmp/dotfiles/config.yaml")" "1"
+check "symlink: target mode kept" "$(python3 -c 'import os,sys;print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$tmp/dotfiles/config.yaml")" "0o600"
+check "symlink: no temp file left" "$(find "$tmp/dotfiles" "$tmp/linkdir" -name '*.tmp' | wc -l | tr -d ' ')" "0"
+
 [ "$fails" = 0 ] && echo "PASS test_config_add" || { echo "$fails failure(s)"; exit 1; }

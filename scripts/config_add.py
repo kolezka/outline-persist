@@ -11,6 +11,7 @@ entries are kept. The same entry twice is a no-op that leaves the file
 untouched. A repo already declared differently is an error, never a silent
 move. A file that cannot be parsed, or has the wrong shape, is never rewritten.
 Writes go to a temp file in the same dir, then replace the config in one step.
+A symlinked config is written through: the link stays, its target is replaced.
 
 Exit codes: 0 written or no change, 1 refused, 2 bad arguments.
 """
@@ -43,6 +44,8 @@ def load(path, yaml):
 
 
 def write(path, data, yaml):
+    # Write through a symlink (dotfiles) so the link survives and its target changes.
+    path = Path(os.path.realpath(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
