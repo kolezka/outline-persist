@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: CONTRACTS
-verified_against: 0fd923b
-verified_on: 2026-09-28
+verified_against: a3dc179
+verified_on: 2026-10-01
 ---
 
 # Contracts
@@ -175,14 +175,58 @@ enforcement: `tests/test_stop_guard.sh` (test suite only).
 ### When it blocks
 
 It blocks when the non-sidechain tool calls after the later of the last Outline
-write and the session marker are substantive: an `Edit`/`Write`/`NotebookEdit`,
-a `git commit`/`push` or `gh pr create`, or at least `WORKLOG_STOP_MIN_TOOLS`
-calls (default `scripts/stop_guard.py::DEFAULT_MIN_TOOLS`)
-(`scripts/stop_guard.py::is_substantive()`) `[verified]`. It never blocks when
-`stop_hook_active` is set, when persistence is off, or for an ignored repo
-(`scripts/stop_guard.py::run()`) `[verified]`.
+write and the session marker are substantive: a `git commit`/`push` or
+`gh pr create`, at least `WORKLOG_STOP_MIN_EDITS` `Edit`/`Write`/`NotebookEdit`
+calls (default `scripts/stop_guard.py::DEFAULT_MIN_EDITS`), or at least
+`WORKLOG_STOP_MIN_TOOLS` calls of any kind (default
+`scripts/stop_guard.py::DEFAULT_MIN_TOOLS`)
+(`scripts/stop_guard.py::is_substantive()`) `[verified]`. A single edit is not
+substantive on its own `[verified]`.
 
-enforcement: `tests/test_stop_guard.sh` (test suite only).
+It never blocks when `stop_hook_active` is set, when the session is unattended,
+when persistence is off, for an ignored repo, inside the cooldown, or when it
+cannot record the block (`scripts/stop_guard.py::run()`) `[verified]`:
+
+- **Unattended.** `scripts/stop_guard.py::is_unattended()` reads
+  `CLAUDE_CODE_SESSION_ATTENDED` (`0` or `1`) from the hook's environment. When
+  that is unset it falls back to `CLAUDE_CODE_ENTRYPOINT`, and treats the values
+  in `scripts/stop_guard.py::UNATTENDED_ENTRYPOINTS` as unattended. With neither
+  set it assumes a human is present `[verified]`. Claude Code sets both
+  variables, and the Stop-hook stdin carries no equivalent field
+  `[historical: 2026-10-01, scratch-config Stop-hook probe on Claude Code 2.1.286]`;
+  see [`GAPS.md`](GAPS.md#the-attended-signal-rests-on-probed-claude-code-variables).
+- **Cooldown.** No block within `WORKLOG_STOP_COOLDOWN_MIN` minutes (default
+  `scripts/stop_guard.py::DEFAULT_COOLDOWN_MIN`) of this session's last block or
+  last Outline write, whichever is later. The last block is the session marker's
+  mtime (`scripts/stop_guard.py::last_block_time()`). The last write is the
+  `timestamp` of the transcript record that holds it
+  (`scripts/stop_guard.py::parse_timestamp()`) `[verified]`. `0` turns the
+  cooldown off `[inferred]` from the strict `<` comparison in
+  `scripts/stop_guard.py::run()`. A time later than the local clock is ignored
+  `[verified]`. A stop skipped by the cooldown leaves the marker where it was,
+  so that work still counts at the first stop after the cooldown `[verified]`.
+- **Unrecordable.** `scripts/stop_guard.py::write_marker()` returns false when
+  there is no `session_id`, the last tool_use has no id, or the state dir cannot
+  be written, and the hook then allows the stop `[verified]`. A block it could
+  not record would repeat on every later stop `[inferred]` from
+  `scripts/stop_guard.py::marker_index()` finding nothing.
+
+A non-integer value in any of the three variables falls back to its default
+(`scripts/stop_guard.py::env_int()`) `[verified]`.
+
+enforcement: `tests/test_stop_guard.sh::"one edit: silent"`,
+  `tests/test_stop_guard.sh::"edits at min-edits: decision"`,
+  `tests/test_stop_guard.sh::"min-edits override: silent"`,
+  `tests/test_stop_guard.sh::"commit: decision"`,
+  `tests/test_stop_guard.sh::"cooldown: new work inside cooldown is silent"`,
+  `tests/test_stop_guard.sh::"cooldown: new work after cooldown blocks"`,
+  `tests/test_stop_guard.sh::"cooldown: work 5 min after a write is silent"`,
+  `tests/test_stop_guard.sh::"cooldown: write stamped in the future is ignored"`,
+  `tests/test_stop_guard.sh::"unrecordable: no tool_use id is silent"`,
+  `tests/test_stop_guard.sh::"unrecordable: unwritable state dir is silent"`,
+  `tests/test_stop_guard.sh::"unattended: claude -p env is silent"` and
+  `tests/test_stop_guard.sh::"unattended: sdk entrypoint without attended flag is silent"`
+  (test suite only). No test runs the hook inside a real Claude Code session.
 
 ### The reason names the resolved context, or sends the model to `/setup`
 

@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: GAPS
-verified_against: 0fd923b
-verified_on: 2026-09-28
+verified_against: a3dc179
+verified_on: 2026-10-01
 ---
 
 # Gaps
@@ -66,10 +66,37 @@ and `scripts/stop_guard.py::WRITE_RE` recognises an Outline write by tool name
 `[verified]`. A change to the transcript shape or the tool names would make the
 guard silently allow every stop, or block after a write it did not recognise
 `[inferred]`. Work done only through tools outside the edit, commit and count
-rules does not trigger it `[verified]`.
+rules does not trigger it `[verified]`. The thresholds are guesses, not tuned on
+data: four edits in a row never block, while a one-line commit does
+`[verified]` from `scripts/stop_guard.py::is_substantive()`.
+
+## The attended signal rests on probed Claude Code variables
+
+`scripts/stop_guard.py::is_unattended()` relies on `CLAUDE_CODE_SESSION_ATTENDED`
+and `CLAUDE_CODE_ENTRYPOINT` from the hook's environment `[verified]`. They were
+found by probing, not from a hook interface this repo can pin, and Claude Code's
+own documentation for them was not checked `[verified]`. A scratch
+`CLAUDE_CONFIG_DIR` with a logging Stop hook showed `ATTENDED=1`, `ENTRYPOINT=cli` for an interactive run
+and `ATTENDED=0`, `ENTRYPOINT=sdk-cli` for `claude -p`, also when `-p` was
+started with `cli` and `1` already in its environment. The Stop-hook stdin had no
+field that tells the two apart
+`[historical: 2026-10-01, scratch-config Stop-hook probe on Claude Code 2.1.286]`.
+Builds before 2.1.284 were not checked. If a future build drops both variables,
+the hook falls back to blocking as if a human were present `[inferred]` from
+`scripts/stop_guard.py::is_unattended()`.
+
+## The cooldown trusts clocks and record timestamps
+
+The block side of the cooldown is the marker file's mtime, and the write side is
+the transcript record's `timestamp` (`scripts/stop_guard.py::last_block_time()`,
+`scripts/stop_guard.py::parse_timestamp()`) `[verified]`. A record with no
+parsable `timestamp` gives no write cooldown, only the block one `[verified]`.
+A time ahead of the local clock is dropped rather than trusted, so a clock moved
+backwards loses the cooldown instead of muting the guard `[verified]`.
 
 ## Stop markers are never cleaned up
 
 One file per session id under the state dir's `stop/` folder
 (`scripts/stop_guard.py::state_stop_dir()`) is written and never removed
-`[verified]`.
+`[verified]`. If that folder cannot be written, the guard never blocks and says
+nothing about why (`scripts/stop_guard.py::write_marker()`) `[verified]`.

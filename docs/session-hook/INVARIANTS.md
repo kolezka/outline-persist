@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: INVARIANTS
-verified_against: 0fd923b
-verified_on: 2026-09-28
+verified_against: a3dc179
+verified_on: 2026-10-01
 ---
 
 # Invariants
@@ -56,8 +56,9 @@ not depend on anything `packaging` manages `[inferred]`.
 
 `scripts/stop_guard.py::run()` returns nothing when `stop_hook_active` is set,
 and records the last tool call it blocked for, so the same work is never blocked
-twice (`scripts/stop_guard.py::write_marker()`) `[verified]`. Any exception
-allows the stop `[verified]`. Defect prevented: a turn that can never end, or a
+twice (`scripts/stop_guard.py::write_marker()`) `[verified]`. When that record
+cannot be written it allows the stop instead of blocking `[verified]`. Any
+exception allows the stop `[verified]`. Defect prevented: a turn that can never end, or a
 decline ("trivial, stopping") re-blocked on every later turn.
 `tests/test_stop_guard.sh` covers both (test suite only) `[verified]`.
 
@@ -67,3 +68,23 @@ decline ("trivial, stopping") re-blocked on every later turn.
 `scripts/persistence-state.sh` the same question `session-start.sh` does
 `[verified]`. Defect prevented: `/off` quieting the reminder while the Stop hook
 keeps demanding writes.
+
+## 7. The Stop guard never blocks a session Claude Code marks unattended
+
+`scripts/stop_guard.py::run()` checks `scripts/stop_guard.py::is_unattended()`
+before it reads the transcript, and allows the stop when it is true `[verified]`.
+A host that sets neither variable counts as attended, so the guard there behaves
+as it did before this check existed `[verified]`.
+Defect prevented: forced turns in `claude -p` and SDK runs, where nobody reads
+the worklog prompt and every forced turn only adds latency and tokens.
+`tests/test_stop_guard.sh::"unattended: claude -p env is silent"` covers it
+(test suite only) `[verified]`.
+
+## 8. A cooldown skip defers work, it never drops it
+
+When the cooldown allows a stop, `scripts/stop_guard.py::run()` returns before
+`scripts/stop_guard.py::write_marker()`, so the marker still points at the last
+work that was shown `[verified]`. The first stop after the cooldown sees all the
+work since then. Defect prevented: a burst of commits inside the cooldown that
+never reaches a worklog. `tests/test_stop_guard.sh::"cooldown: new work after cooldown blocks"`
+covers it (test suite only) `[verified]`.

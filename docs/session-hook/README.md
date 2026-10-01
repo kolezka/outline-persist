@@ -1,8 +1,8 @@
 ---
 block: session-hook
 doc: README
-verified_against: 0fd923b
-verified_on: 2026-09-28
+verified_against: a3dc179
+verified_on: 2026-10-01
 owns: [hooks/, scripts/session-start.sh, scripts/persistence-state.sh, scripts/stop-guard.sh, scripts/stop_guard.py]
 depends_on: [packaging, persistence-protocol]
 ---
@@ -21,8 +21,9 @@ and `Stop` events `[verified]`. `scripts/session-start.sh` is the SessionStart
 command; it prints one line of JSON carrying the reminder text, or nothing at all
 `[verified]`. `scripts/stop-guard.sh` is the Stop command, a thin wrapper around
 `scripts/stop_guard.py`: when substantive work happened since the last Outline
-write, it blocks the stop once and asks for a checkpoint, handoff or completion
-`[verified]`. `scripts/persistence-state.sh` owns the single on/off marker file
+write, it blocks the stop once and asks for a checkpoint, handoff or completion.
+It stays quiet in unattended sessions and for a cooldown after each block or
+write `[verified]`. `scripts/persistence-state.sh` owns the single on/off marker file
 that silences both hooks `[verified]`.
 
 The hook never calls Outline and never calls an MCP tool. It only emits static
@@ -84,7 +85,7 @@ flowchart TD
     StopEvent["Claude Code Stop event"] --> Hook
     Hook -->|"bash stop-guard.sh"| Guard["scripts/stop_guard.py"]
     Guard -->|"status"| State
-    Guard -->|"substantive, unpersisted"| Block["decision: block, once"]
+    Guard -->|"substantive, unpersisted, attended, past cooldown"| Block["decision: block, once"]
 ```
 
 The two dotted paths cross out of this block: the env var is set by whoever runs
