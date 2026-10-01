@@ -231,14 +231,15 @@ change updates that flag. If the parent is missing, report the record as orphane
 - **setup** — run Onboarding (above) for the current repo.
 
 A `Stop` hook (`scripts/stop-guard.sh`) also runs when a turn ends. If substantive
-work (edits, a commit/push/PR, or a long run of tool calls) happened since the last
-Outline write in the transcript, it blocks the stop once and asks the model to run
-this skill (checkpoint, handoff or complete) before finishing. For an unresolved
-repo it asks for Onboarding (`/setup`) first. It never blocks twice in a row, it
-never blocks for an ignored repo, and it never fires when persistence is off. A
-decline ("trivial, stopping") is remembered per session, so the same already-shown
-work is not blocked again on the next turn; only new work after the decline
-triggers another block.
+work (a commit/push/PR, several edits, or a long run of tool calls) happened since
+the last Outline write in the transcript, it blocks the stop once and asks the model
+to run this skill (checkpoint, handoff or complete) before finishing. For an
+unresolved repo it asks for Onboarding (`/setup`) first. It never blocks twice in a
+row, it never blocks for an ignored repo, and it never fires when persistence is off
+or in a non-interactive run (`claude -p`, SDK). After a block or an Outline write it
+stays quiet for a cooldown (30 minutes by default). A decline ("trivial, stopping")
+is remembered per session, so the same already-shown work is not blocked again on
+the next turn; only new work after the decline triggers another block.
 
 ## When to write vs. not
 

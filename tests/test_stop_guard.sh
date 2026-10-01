@@ -14,7 +14,10 @@ trap 'rm -rf "$tmp"' EXIT
 XDG_STATE_HOME="$tmp/state"
 export XDG_STATE_HOME
 mkdir -p "$XDG_STATE_HOME"
-unset WORKLOG_HOOK_OFF WORKLOG_STOP_MIN_TOOLS WORKLOG_WORLD || true
+unset WORKLOG_HOOK_OFF WORKLOG_STOP_MIN_TOOLS WORKLOG_STOP_MIN_EDITS WORKLOG_STOP_COOLDOWN_MIN WORKLOG_WORLD || true
+# Claude Code sets these in every hook's environment. Clear them so a run from
+# inside `claude -p` behaves like a run from a plain terminal.
+unset CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT || true
 # Isolate from the host config so world resolution stays deterministic.
 export WORKLOG_CONFIG="$tmp/none.yaml"
 
@@ -47,9 +50,47 @@ else:
 '
 }
 
+# Env assignments in front of a run_guard call reach the hook process.
 run_guard() {
   local transcript="$1" active="${2:-false}" session="${3:-s1}"
   input "$transcript" "$cwd_dir" "$active" "$session" | bash "$SCRIPT"
+}
+
+# Transcript lines. Each prints one assistant record holding one tool_use.
+edit_line() {
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"%s","name":"Edit","input":{"file_path":"a.py"}}]}}\n' "$1"
+}
+commit_line() {
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":"git commit -m x"}}]}}\n' "$1"
+}
+# $1 Edit lines, with ids <$2>-1 .. <$2>-$1.
+edits() {
+  local i
+  for i in $(seq 1 "$1"); do edit_line "$2-$i"; done
+}
+# An Outline write made $1 minutes ago, stamped the way Claude Code stamps records.
+write_line() {
+  python3 -c '
+import datetime, json, sys
+ts = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=float(sys.argv[1]))
+print(json.dumps({
+    "type": "assistant",
+    "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+    "message": {"content": [{"type": "tool_use", "id": "w-" + sys.argv[1],
+                             "name": "mcp__outline__update_document", "input": {}}]},
+}))
+' "$1"
+}
+# Backdate a session's marker by $2 minutes, as if its last block was that long ago.
+# The marker path comes from the hook itself, not restated here.
+age_marker() {
+  python3 -c "
+import os, sys, time
+sys.path.insert(0, '$ROOT/scripts')
+import stop_guard as m
+t = time.time() - float(sys.argv[2]) * 60
+os.utime(m.marker_path(sys.argv[1]), (t, t))
+" "$1" "$2"
 }
 
 # Fixture: no tool_use at all.
@@ -60,29 +101,29 @@ EOF
 
 # Fixture: one Edit, no Outline write ever.
 t_edit_no_write="$tmp/edit_no_write.jsonl"
-cat > "$t_edit_no_write" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.py"}}]}}
-EOF
+edit_line "tu-one" > "$t_edit_no_write"
 
-# Fixture: Edit, then a user-scope Outline update_document afterward.
+# Fixtures: one edit short of the default WORKLOG_STOP_MIN_EDITS (5), and exactly at it.
+t_edits4="$tmp/edits4.jsonl"
+edits 4 e4 > "$t_edits4"
+t_edits5="$tmp/edits5.jsonl"
+edits 5 e5 > "$t_edits5"
+
+# Fixture: a commit, no Outline write ever.
+t_commit="$tmp/commit.jsonl"
+commit_line "tu-commit" > "$t_commit"
+
+# Fixture: enough edits to block, then a user-scope Outline update_document.
 t_edit_then_write="$tmp/edit_then_write.jsonl"
-cat > "$t_edit_then_write" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.py"}}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__outline__update_document","input":{}}]}}
-EOF
+{ edits 5 ew; printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__outline__update_document","input":{}}]}}'; } > "$t_edit_then_write"
 
-# Fixture: the same Edit, but it happened on a subagent (sidechain) transcript line.
+# Fixture: the same blocking work, but done on subagent (sidechain) transcript lines.
 t_sidechain="$tmp/sidechain.jsonl"
-cat > "$t_sidechain" <<'EOF'
-{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.py"}}]}}
-EOF
+{ edits 5 sc; commit_line "sc-commit"; } | sed 's/"type":"assistant"/"type":"assistant","isSidechain":true/' > "$t_sidechain"
 
-# Fixture: Edit, then a plugin-scoped Outline write (not the bare mcp__outline__ prefix).
+# Fixture: enough edits to block, then a plugin-scoped Outline write (not the bare mcp__outline__ prefix).
 t_plugin_write="$tmp/plugin_write.jsonl"
-cat > "$t_plugin_write" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.py"}}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__plugin_worklog-persist_outline__create_document","input":{}}]}}
-EOF
+{ edits 5 pw; printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__plugin_worklog-persist_outline__create_document","input":{}}]}}'; } > "$t_plugin_write"
 
 # Fixture: unparsable content, must never crash the hook.
 t_garbage="$tmp/garbage.jsonl"
@@ -100,27 +141,43 @@ EOF
 out="$(run_guard "$t_no_work" false "case1")"
 check "no work: silent" "$out" ""
 
-# Case 2: an Edit since the (nonexistent) last write -> block.
+# Case 2: a single Edit is not substantive on its own -> allow.
 out="$(run_guard "$t_edit_no_write" false "case2")"
-check "edit no write: decision" "$(printf '%s' "$out" | decision)" "block"
-check "edit no write: mentions checkpoint" "$(printf '%s' "$out" | grep -c 'worklog-persist skill')" "1"
+check "one edit: silent" "$out" ""
+
+# Case 2a: one edit below the default WORKLOG_STOP_MIN_EDITS -> allow.
+out="$(run_guard "$t_edits4" false "case2a")"
+check "edits below min-edits: silent" "$out" ""
+
+# Case 2b: exactly WORKLOG_STOP_MIN_EDITS edits -> block.
+out="$(run_guard "$t_edits5" false "case2b")"
+check "edits at min-edits: decision" "$(printf '%s' "$out" | decision)" "block"
+
+# Case 2c: WORKLOG_STOP_MIN_EDITS raises the bar above the same five edits -> allow.
+out="$(WORKLOG_STOP_MIN_EDITS=6 run_guard "$t_edits5" false "case2c")"
+check "min-edits override: silent" "$out" ""
+
+# Case 2d: a commit blocks on its own, with no edits at all.
+out="$(run_guard "$t_commit" false "case2d")"
+check "commit: decision" "$(printf '%s' "$out" | decision)" "block"
+check "commit: mentions checkpoint" "$(printf '%s' "$out" | grep -c 'worklog-persist skill')" "1"
 # The work dir is not declared anywhere, so the reason sends the model to onboarding.
 check "unresolved: reason points to /setup" \
   "$(printf '%s' "$out" | python3 -c 'import json,sys; r=json.load(sys.stdin)["reason"]; print("/setup" in r, "Ask the operator once" in r)')" "True False"
 
-# Case 3: an Outline write after the Edit clears the slate -> allow.
+# Case 3: an Outline write after the edits clears the slate -> allow.
 out="$(run_guard "$t_edit_then_write" false "case3")"
 check "edit then write: silent" "$out" ""
 
-# Case 4: stop_hook_active=true always allows, even with unpersisted Edits.
-out="$(run_guard "$t_edit_no_write" true "case4")"
+# Case 4: stop_hook_active=true always allows, even with unpersisted work.
+out="$(run_guard "$t_commit" true "case4")"
 check "stop_hook_active: silent" "$out" ""
 
 # Case 5: persistence off (WORKLOG_HOOK_OFF=1) always allows.
-out="$(WORKLOG_HOOK_OFF=1 bash -c "$(declare -f input); input '$t_edit_no_write' '$cwd_dir' false 'case5'" | WORKLOG_HOOK_OFF=1 bash "$SCRIPT")"
+out="$(WORKLOG_HOOK_OFF=1 run_guard "$t_commit" false "case5")"
 check "persistence off: silent" "$out" ""
 
-# Case 6: the only Edit is on a sidechain (subagent) line -> ignored -> allow.
+# Case 6: the only work is on sidechain (subagent) lines -> ignored -> allow.
 out="$(run_guard "$t_sidechain" false "case6")"
 check "sidechain only: silent" "$out" ""
 
@@ -141,59 +198,102 @@ check "garbage transcript: exit 0" "$rc" "0"
 # the second, which needs the full 5 tool_uses to test the threshold itself.
 t_many="$tmp/many.jsonl"
 : > "$t_many"
-for _ in $(seq 1 5); do
-  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}\n' >> "$t_many"
+for i in $(seq 1 5); do
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"r-%s","name":"Read","input":{}}]}}\n' "$i" >> "$t_many"
 done
-out="$(WORKLOG_STOP_MIN_TOOLS=5 bash -c "$(declare -f input); input '$t_many' '$cwd_dir' false 'case9-block'" | WORKLOG_STOP_MIN_TOOLS=5 bash "$SCRIPT")"
+out="$(WORKLOG_STOP_MIN_TOOLS=5 run_guard "$t_many" false "case9-block")"
 check "min-tools threshold: decision" "$(printf '%s' "$out" | decision)" "block"
 out="$(run_guard "$t_many" false "case9-below")"
 check "below default threshold: silent" "$out" ""
 
+# The marker cases below re-stop the same session back to back, so they turn the
+# cooldown off (WORKLOG_STOP_COOLDOWN_MIN=0) to test the marker on its own.
+
 # Fixture dedicated to the per-session decline marker below. Mutated in place
 # by case 11, so it is kept separate from the fixed transcripts used above. The
-# marker stores a tool_use id, so these fixtures need real ids (unlike the
-# fixtures above, which never rely on marker persistence for their result).
+# marker stores a tool_use id, so these fixtures need real ids.
 t_marker="$tmp/marker.jsonl"
-cat > "$t_marker" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu-a1","name":"Edit","input":{"file_path":"a.py"}}]}}
-EOF
+commit_line "tu-a1" > "$t_marker"
 
 # Case 10: a block is recorded for this session; the same transcript, not
 # extended further, does not re-block the next stop (a decline is honoured
 # once the work behind it has actually been shown).
-out="$(run_guard "$t_marker" false "sess-a")"
+out="$(WORKLOG_STOP_COOLDOWN_MIN=0 run_guard "$t_marker" false "sess-a")"
 check "marker: first block" "$(printf '%s' "$out" | decision)" "block"
-out="$(run_guard "$t_marker" false "sess-a")"
+out="$(WORKLOG_STOP_COOLDOWN_MIN=0 run_guard "$t_marker" false "sess-a")"
 check "marker: declined work not re-nagged" "$out" ""
 
 # Case 11: new work appended after the decline blocks again, same session.
-cat >> "$t_marker" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu-a2","name":"Edit","input":{"file_path":"b.py"}}]}}
-EOF
-out="$(run_guard "$t_marker" false "sess-a")"
+commit_line "tu-a2" >> "$t_marker"
+out="$(WORKLOG_STOP_COOLDOWN_MIN=0 run_guard "$t_marker" false "sess-a")"
 check "marker: new work after decline blocks again" "$(printf '%s' "$out" | decision)" "block"
 
 # Case 12: a different session has no marker of its own, so the same
 # transcript still blocks for it even though sess-a just saw this work.
-out="$(run_guard "$t_marker" false "sess-b")"
+out="$(WORKLOG_STOP_COOLDOWN_MIN=0 run_guard "$t_marker" false "sess-b")"
 check "marker: different session still blocks" "$(printf '%s' "$out" | decision)" "block"
 
 # Case 13: a recorded marker id that no longer appears in the transcript is
 # treated as absent (falls back to the last write) rather than trusting a
 # stale marker forever or blocking on every single turn regardless of id.
 t_missing_a="$tmp/marker_missing_a.jsonl"
-cat > "$t_missing_a" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu-x","name":"Edit","input":{"file_path":"a.py"}}]}}
-EOF
-out="$(run_guard "$t_missing_a" false "sess-c")"
+commit_line "tu-x" > "$t_missing_a"
+out="$(WORKLOG_STOP_COOLDOWN_MIN=0 run_guard "$t_missing_a" false "sess-c")"
 check "marker: setup block to record tu-x for sess-c" "$(printf '%s' "$out" | decision)" "block"
 
 t_missing_b="$tmp/marker_missing_b.jsonl"
-cat > "$t_missing_b" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu-z","name":"Edit","input":{"file_path":"c.py"}}]}}
-EOF
-out="$(run_guard "$t_missing_b" false "sess-c")"
+commit_line "tu-z" > "$t_missing_b"
+out="$(WORKLOG_STOP_COOLDOWN_MIN=0 run_guard "$t_missing_b" false "sess-c")"
 check "marker: id missing from transcript falls back and blocks" "$(printf '%s' "$out" | decision)" "block"
+
+# Case 14: a second substantive stop inside the default cooldown (30 min) after a
+# block is allowed; once the last block is older than that, it blocks again.
+t_cool="$tmp/cooldown.jsonl"
+commit_line "tu-c1" > "$t_cool"
+out="$(run_guard "$t_cool" false "sess-cool")"
+check "cooldown: first block" "$(printf '%s' "$out" | decision)" "block"
+commit_line "tu-c2" >> "$t_cool"
+out="$(run_guard "$t_cool" false "sess-cool")"
+check "cooldown: new work inside cooldown is silent" "$out" ""
+age_marker "sess-cool" 31
+out="$(run_guard "$t_cool" false "sess-cool")"
+check "cooldown: new work after cooldown blocks" "$(printf '%s' "$out" | decision)" "block"
+
+# Case 15: an Outline write starts the same cooldown as a block does.
+t_recent_write="$tmp/recent_write.jsonl"
+{ write_line 5; commit_line "tu-rw"; } > "$t_recent_write"
+out="$(run_guard "$t_recent_write" false "case15-recent")"
+check "cooldown: work 5 min after a write is silent" "$out" ""
+t_old_write="$tmp/old_write.jsonl"
+{ write_line 40; commit_line "tu-ow"; } > "$t_old_write"
+out="$(run_guard "$t_old_write" false "case15-old")"
+check "cooldown: work 40 min after a write blocks" "$(printf '%s' "$out" | decision)" "block"
+# A write stamped ahead of the clock must not mute the guard until then.
+t_future_write="$tmp/future_write.jsonl"
+{ write_line -60; commit_line "tu-fw"; } > "$t_future_write"
+out="$(run_guard "$t_future_write" false "case15-future")"
+check "cooldown: write stamped in the future is ignored" "$(printf '%s' "$out" | decision)" "block"
+
+# Case 16: nobody is watching a non-interactive session, so it never blocks.
+# CLAUDE_CODE_SESSION_ATTENDED decides when set; CLAUDE_CODE_ENTRYPOINT otherwise.
+out="$(CLAUDE_CODE_SESSION_ATTENDED=0 CLAUDE_CODE_ENTRYPOINT=sdk-cli run_guard "$t_commit" false "case16-print")"
+check "unattended: claude -p env is silent" "$out" ""
+out="$(CLAUDE_CODE_ENTRYPOINT=sdk-ts run_guard "$t_commit" false "case16-sdk")"
+check "unattended: sdk entrypoint without attended flag is silent" "$out" ""
+out="$(CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=cli run_guard "$t_commit" false "case16-tui")"
+check "attended: interactive env still blocks" "$(printf '%s' "$out" | decision)" "block"
+out="$(CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=sdk-cli run_guard "$t_commit" false "case16-flag")"
+check "attended: flag wins over entrypoint" "$(printf '%s' "$out" | decision)" "block"
+
+# Case 17: a block the marker cannot record would repeat on every stop, so the
+# hook allows instead: no tool_use id to record, or a state dir it cannot write.
+t_no_id="$tmp/no_id.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git commit -m x"}}]}}' > "$t_no_id"
+out="$(run_guard "$t_no_id" false "case17-noid")"
+check "unrecordable: no tool_use id is silent" "$out" ""
+: > "$tmp/state-is-a-file"
+out="$(XDG_STATE_HOME="$tmp/state-is-a-file" run_guard "$t_commit" false "case17-unwritable")"
+check "unrecordable: unwritable state dir is silent" "$out" ""
 
 # COMMIT_RE unit cases: a git subcommand behind -C/-c global options is still
 # caught, a lookalike subcommand (commit-tree) is not, and gh pr create counts.
@@ -224,9 +324,7 @@ mkdir -p "$broken"
 cp "$ROOT"/scripts/*.sh "$ROOT"/scripts/*.py "$broken"/
 printf '#!/usr/bin/env bash\nexit 1\n' > "$broken/resolve-context.sh"
 t_broken="$tmp/broken_ctx.jsonl"
-cat > "$t_broken" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu-broken","name":"Edit","input":{"file_path":"a.py"}}]}}
-EOF
+commit_line "tu-broken" > "$t_broken"
 out="$(input "$t_broken" "$cwd_dir" false "sess-broken" | bash "$broken/stop-guard.sh")"
 check "resolve-context failure: still blocks" "$(printf '%s' "$out" | decision)" "block"
 check "resolve-context failure: no world claim in reason" \
